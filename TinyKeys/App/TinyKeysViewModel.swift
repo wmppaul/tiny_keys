@@ -1,22 +1,36 @@
 import Foundation
+import UIKit
 
 @MainActor
 final class TinyKeysViewModel: ObservableObject {
     let keyboardLayout = PianoKeyboardLayout()
     let audioSessionManager: AudioSessionManager
+    let orientationController = OrientationController.shared
 
     @Published private(set) var visibleSpan: VisibleKeySpan = .oneAndHalf
     @Published private(set) var visibleWhiteStart: CGFloat
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
+    @Published private(set) var keyboardOrientation: KeyboardOrientationMode
     @Published var isSettingsPresented = false
 
     private let synthEngine: SynthEngine
+    private let defaults = UserDefaults.standard
+    private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
+    private var hasStoredKeyboardOrientation = false
 
     init() {
         let synthEngine = SynthEngine()
         self.synthEngine = synthEngine
         self.visibleWhiteStart = keyboardLayout.defaultVisibleStart(for: .oneAndHalf)
+        if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
+            self.keyboardOrientation = storedOrientation
+            self.hasStoredKeyboardOrientation = true
+        } else {
+            self.keyboardOrientation = .landscapeRight
+            self.hasStoredKeyboardOrientation = true
+            defaults.set(KeyboardOrientationMode.landscapeRight.rawValue, forKey: keyboardOrientationKey)
+        }
         self.audioSessionManager = AudioSessionManager {
             synthEngine.ensureRunning()
         }
@@ -30,6 +44,7 @@ final class TinyKeysViewModel: ObservableObject {
     func activateAudioIfNeeded() {
         audioSessionManager.configureForMixingPlayback()
         synthEngine.ensureRunning()
+        orientationController.applyCurrentOrientation()
     }
 
     func noteOn(token: Int, midiNote: Int) {
@@ -64,5 +79,23 @@ final class TinyKeysViewModel: ObservableObject {
     func updateSound(_ sound: SoundPreset) {
         selectedSound = sound
         synthEngine.setPreset(sound)
+    }
+
+    func updateAppOrientation(_ orientation: AppOrientationMode) {
+        orientationController.updateAppOrientation(orientation)
+    }
+
+    func updateKeyboardOrientation(_ orientation: KeyboardOrientationMode) {
+        guard keyboardOrientation != orientation else {
+            return
+        }
+
+        keyboardOrientation = orientation
+        hasStoredKeyboardOrientation = true
+        defaults.set(orientation.rawValue, forKey: keyboardOrientationKey)
+    }
+
+    func updateInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
+        orientationController.updateCurrentInterfaceOrientation(orientation)
     }
 }

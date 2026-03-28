@@ -27,6 +27,7 @@
 		A00000000000000000000051 /* AppIcon-60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000035 /* AppIcon-60@2x.png */; };
 		A00000000000000000000052 /* AppIcon-60@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000036 /* AppIcon-60@3x.png */; };
 		A00000000000000000000053 /* AppIcon-1024.png in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000037 /* AppIcon-1024.png */; };
+		A00000000000000000000054 /* OrientationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000038 /* OrientationController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +54,7 @@
 		A00000000000000000000035 /* AppIcon-60@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-60@2x.png"; sourceTree = "<group>"; };
 		A00000000000000000000036 /* AppIcon-60@3x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-60@3x.png"; sourceTree = "<group>"; };
 		A00000000000000000000037 /* AppIcon-1024.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "AppIcon-1024.png"; sourceTree = "<group>"; };
+		A00000000000000000000038 /* OrientationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,6 +104,7 @@
 			children = (
 				A00000000000000000000021 /* TinyKeysApp.swift */,
 				A00000000000000000000022 /* TinyKeysAppDelegate.swift */,
+				A00000000000000000000038 /* OrientationController.swift */,
 				A00000000000000000000023 /* TinyKeysViewModel.swift */,
 				A00000000000000000000024 /* MainKeyboardScreen.swift */,
 			);
@@ -255,6 +258,7 @@
 				A00000000000000000000048 /* KeyboardNavigationStrip.swift in Sources */,
 				A00000000000000000000049 /* SettingsSheetView.swift in Sources */,
 				A0000000000000000000004A /* TinyKeysSettings.swift in Sources */,
+				A00000000000000000000054 /* OrientationController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

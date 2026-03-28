@@ -1,6 +1,16 @@
 import CoreGraphics
 import Foundation
 
+private enum PianoGeometry {
+    // Based on measured piano-key proportions from the LilyPond reference the user provided.
+    static let blackKeyWidthRatio: CGFloat = 15.0 / 23.5
+    static let blackKeyHeightRatio: CGFloat = 95.0 / 150.0
+
+    static let leftBlackCenterOffset: CGFloat = 20.5 / 23.5
+    static let centeredBlackCenterOffset: CGFloat = 1.0
+    static let rightBlackCenterOffset: CGFloat = 26.5 / 23.5
+}
+
 struct PianoKey: Identifiable, Hashable {
     enum Kind {
         case white
@@ -50,12 +60,12 @@ struct PianoKeyboardLayout {
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
             case 1:
-                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: 0.67))
+                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: PianoGeometry.leftBlackCenterOffset))
             case 2:
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
             case 3:
-                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: 0.67))
+                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: PianoGeometry.rightBlackCenterOffset))
             case 4:
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
@@ -63,17 +73,17 @@ struct PianoKeyboardLayout {
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
             case 6:
-                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: 0.67))
+                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: PianoGeometry.leftBlackCenterOffset))
             case 7:
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
             case 8:
-                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: 0.67))
+                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: PianoGeometry.centeredBlackCenterOffset))
             case 9:
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
             case 10:
-                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: 0.67))
+                builtKeys.append(PianoKey(midiNote: midiNote, kind: .black, whiteIndex: whiteIndex - 1, blackCenterOffset: PianoGeometry.rightBlackCenterOffset))
             default:
                 builtKeys.append(PianoKey(midiNote: midiNote, kind: .white, whiteIndex: whiteIndex, blackCenterOffset: 0))
                 whiteIndex += 1
@@ -115,8 +125,8 @@ struct PianoKeyboardLayout {
 
         let clampedStart = clampVisibleStart(visibleWhiteStart, visibleWhiteCount: visibleWhiteCount)
         let whiteKeyWidth = size.width / visibleWhiteCount
-        let blackKeyWidth = whiteKeyWidth * 0.62
-        let blackKeyHeight = size.height * 0.62
+        let blackKeyWidth = whiteKeyWidth * PianoGeometry.blackKeyWidthRatio
+        let blackKeyHeight = size.height * PianoGeometry.blackKeyHeightRatio
 
         var whiteFrames: [PianoKeyFrame] = []
         var blackFrames: [PianoKeyFrame] = []

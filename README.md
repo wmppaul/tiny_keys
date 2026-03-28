@@ -4,10 +4,11 @@ Tiny Keys is a minimal iPhone piano utility for quickly checking melodies by ear
 
 ## What it does
 
-- launches straight into a landscape-only piano keyboard
+- launches straight into a minimal piano interface optimized for quick note checking
 - keeps the main screen almost entirely dedicated to touchable keys
 - supports multitouch chords and glissando-style dragging across keys
 - uses a thin navigation strip above the keyboard to move the visible window across a larger note range
+- lets the app orientation and keyboard orientation be configured independently in settings
 
 ## Audio mixing
 
@@ -30,7 +31,16 @@ This is the key behavior that allows Tiny Keys to play on top of Apple Music ins
 
 The keyboard itself is not a scroll view. Dragging on keys plays notes. Horizontal navigation happens only through the thin strip above the keyboard, implemented in [`TinyKeys/Keyboard/KeyboardNavigationStrip.swift`](./TinyKeys/Keyboard/KeyboardNavigationStrip.swift).
 
-The visible keyboard width can be set to 1, 1.5, or 2 octaves in settings. The default is 1.5 octaves.
+The visible keyboard width can be set with a `Visible Octaves` control at 1, 1.5, or 2 octaves. The default is 1.5 octaves.
+
+## Orientation controls
+
+Tiny Keys now separates the system app orientation from the keyboard’s own layout direction:
+
+- `App Orientation`: portrait or landscape for the overall app chrome, safe areas, and home-indicator relationship
+- `Keyboard Direction`: left landscape, portrait, or right landscape for the playable keyboard surface
+
+The app-level orientation is managed in [`TinyKeys/App/OrientationController.swift`](./TinyKeys/App/OrientationController.swift) and wired into [`TinyKeys/App/TinyKeysAppDelegate.swift`](./TinyKeys/App/TinyKeysAppDelegate.swift). The keyboard’s independent rotation is applied in [`TinyKeys/App/MainKeyboardScreen.swift`](./TinyKeys/App/MainKeyboardScreen.swift).
 
 ## Build and run
 
@@ -75,6 +85,8 @@ These behaviors must be validated on a real iPhone:
 - Apple Music keeps playing while Tiny Keys plays notes
 - audio route changes and interruptions recover cleanly
 - touch feel, latency, and glissando response are satisfactory on hardware
+- app-orientation switching from settings behaves reliably on device
+- rotated keyboard layouts feel correct in portrait and landscape app modes
 
 The simulator can build and launch the app on a normal Xcode setup, but it is not a reliable way to validate real background audio mixing against Apple Music.
 

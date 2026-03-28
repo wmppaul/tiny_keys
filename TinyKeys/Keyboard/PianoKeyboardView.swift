@@ -63,6 +63,9 @@ final class PianoKeyboardUIView: UIView {
         backgroundColor = .clear
         isMultipleTouchEnabled = true
         contentMode = .redraw
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (keyboardView: Self, _) in
+            keyboardView.setNeedsDisplay()
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -105,11 +108,6 @@ final class PianoKeyboardUIView: UIView {
             context.addPath(path.cgPath)
             context.fillPath()
         }
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        setNeedsDisplay()
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {

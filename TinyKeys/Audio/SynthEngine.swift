@@ -130,10 +130,15 @@ final class SynthEngine {
             case .sine:
                 rawSample = carrier
             case .electricPiano:
+                let tineTransient = max(0, 1 - (Float(ageInSamples) / 4_200))
+                let bellTransient = max(0, 1 - (Float(ageInSamples) / 1_200))
+                let gentleFM = sin(phase + (0.26 * modulator))
                 rawSample =
-                    (0.72 * sin(phase + (1.8 * modulator))) +
-                    (0.20 * sin(phase * 2.0)) +
-                    (0.08 * sin(phase * 3.0))
+                    (0.64 * gentleFM) +
+                    (0.18 * sin(phase * 2.0 + (0.08 * modulator))) +
+                    (0.10 * tineTransient * sin(phase * 3.01)) +
+                    (0.06 * bellTransient * sin(phase * 5.03)) +
+                    (0.05 * sin(phase * 0.5))
             case .piano:
                 let transient = max(0, 1 - (Float(ageInSamples) / 900))
                 rawSample =
@@ -335,7 +340,7 @@ private extension SoundPreset {
         case .piano:
             return .init(attack: 0.003, decay: 0.24, sustain: 0.52, release: 0.11, gain: 0.22)
         case .electricPiano:
-            return .init(attack: 0.004, decay: 0.33, sustain: 0.65, release: 0.18, gain: 0.20)
+            return .init(attack: 0.005, decay: 0.42, sustain: 0.72, release: 0.26, gain: 0.16)
         case .sine:
             return .init(attack: 0.002, decay: 0.08, sustain: 0.92, release: 0.08, gain: 0.17)
         }
@@ -346,7 +351,7 @@ private extension SoundPreset {
         case .piano:
             return 2.1
         case .electricPiano:
-            return 1.75
+            return 1.1
         case .sine:
             return 1
         }

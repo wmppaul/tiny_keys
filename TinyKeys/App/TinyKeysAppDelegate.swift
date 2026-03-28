@@ -7,6 +7,6 @@ final class TinyKeysAppDelegate: NSObject, UIApplicationDelegate {
     ) -> UIInterfaceOrientationMask {
         _ = application
         _ = window
-        return .landscape
+        return OrientationController.shared.supportedMask
     }
 }
