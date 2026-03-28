@@ -28,6 +28,11 @@ struct PianoKeyboardView: UIViewRepresentable {
 }
 
 final class PianoKeyboardUIView: UIView {
+    private struct CachedKey {
+        let keyFrame: PianoKeyFrame
+        let path: CGPath
+    }
+
     var layoutModel = PianoKeyboardLayout() {
         didSet {
             updateFrames()
@@ -54,8 +59,11 @@ final class PianoKeyboardUIView: UIView {
     var noteOff: ((Int) -> Void)?
 
     private var currentFrames = PianoKeyboardFrameSet(whiteKeys: [], blackKeys: [])
+    private var cachedWhiteKeys: [CachedKey] = []
+    private var cachedBlackKeys: [CachedKey] = []
     private var touchTokens: [ObjectIdentifier: Int] = [:]
     private var touchNotes: [ObjectIdentifier: Int] = [:]
+    private var activeNoteCounts: [Int: Int] = [:]
     private var nextToken = 1
 
     override init(frame: CGRect) {
@@ -86,26 +94,22 @@ final class PianoKeyboardUIView: UIView {
         context.setFillColor(palette.background.cgColor)
         context.fill(bounds)
 
-        for keyFrame in currentFrames.whiteKeys {
-            let isPressed = activeMIDINotes.contains(keyFrame.key.midiNote)
-            let insetFrame = keyFrame.frame.insetBy(dx: 0.5, dy: 0.5)
-            let path = UIBezierPath(roundedRect: insetFrame, cornerRadius: 4)
+        for cachedKey in cachedWhiteKeys {
+            let isPressed = isNoteActive(cachedKey.keyFrame.key.midiNote)
             context.setFillColor((isPressed ? palette.whitePressed : palette.whiteKey).cgColor)
-            context.addPath(path.cgPath)
+            context.addPath(cachedKey.path)
             context.fillPath()
 
             context.setStrokeColor(palette.whiteBorder.cgColor)
             context.setLineWidth(1)
-            context.addPath(path.cgPath)
+            context.addPath(cachedKey.path)
             context.strokePath()
         }
 
-        for keyFrame in currentFrames.blackKeys {
-            let isPressed = activeMIDINotes.contains(keyFrame.key.midiNote)
-            let insetFrame = keyFrame.frame.insetBy(dx: 0.5, dy: 0.5)
-            let path = UIBezierPath(roundedRect: insetFrame, cornerRadius: 4)
+        for cachedKey in cachedBlackKeys {
+            let isPressed = isNoteActive(cachedKey.keyFrame.key.midiNote)
             context.setFillColor((isPressed ? palette.blackPressed : palette.blackKey).cgColor)
-            context.addPath(path.cgPath)
+            context.addPath(cachedKey.path)
             context.fillPath()
         }
     }
@@ -130,21 +134,20 @@ final class PianoKeyboardUIView: UIView {
         endTouches(touches)
     }
 
-    private var activeMIDINotes: Set<Int> {
-        Set(touchNotes.values)
-    }
-
     private func updateFrames() {
         currentFrames = layoutModel.frames(
             in: bounds.size,
             visibleWhiteStart: visibleWhiteStart,
             visibleWhiteCount: visibleWhiteCount
         )
+        cachedWhiteKeys = currentFrames.whiteKeys.map(Self.cachedKey(for:))
+        cachedBlackKeys = currentFrames.blackKeys.map(Self.cachedKey(for:))
         setNeedsDisplay()
     }
 
     private func handleTouches(_ touches: Set<UITouch>, shouldEndMissingNotes: Bool) {
         _ = shouldEndMissingNotes
+        var didChangeVisibleState = false
 
         for touch in touches {
             let identifier = ObjectIdentifier(touch)
@@ -158,32 +161,42 @@ final class PianoKeyboardUIView: UIView {
             }
 
             if activeMIDINote != nil {
+                deactivateCurrentNote(for: identifier)
                 noteOff?(token)
-                touchNotes[identifier] = nil
+                didChangeVisibleState = true
             }
 
             if let hitMIDINote {
+                activateNote(hitMIDINote, for: identifier)
                 noteOn?(token, hitMIDINote)
-                touchNotes[identifier] = hitMIDINote
+                didChangeVisibleState = true
             }
         }
 
-        setNeedsDisplay()
+        if didChangeVisibleState {
+            setNeedsDisplay()
+        }
     }
 
     private func endTouches(_ touches: Set<UITouch>) {
+        var didChangeVisibleState = false
+
         for touch in touches {
             let identifier = ObjectIdentifier(touch)
 
             if let token = touchTokens[identifier], touchNotes[identifier] != nil {
+                deactivateCurrentNote(for: identifier)
                 noteOff?(token)
+                didChangeVisibleState = true
             }
 
             touchTokens.removeValue(forKey: identifier)
             touchNotes.removeValue(forKey: identifier)
         }
 
-        setNeedsDisplay()
+        if didChangeVisibleState {
+            setNeedsDisplay()
+        }
     }
 
     private func allocateToken(for identifier: ObjectIdentifier) -> Int {
@@ -203,6 +216,40 @@ final class PianoKeyboardUIView: UIView {
         }
 
         return nil
+    }
+
+    private func activateNote(_ midiNote: Int, for identifier: ObjectIdentifier) {
+        touchNotes[identifier] = midiNote
+        activeNoteCounts[midiNote, default: 0] += 1
+    }
+
+    private func deactivateCurrentNote(for identifier: ObjectIdentifier) {
+        guard let midiNote = touchNotes.removeValue(forKey: identifier) else {
+            return
+        }
+
+        let remainingCount = (activeNoteCounts[midiNote] ?? 1) - 1
+        if remainingCount <= 0 {
+            activeNoteCounts.removeValue(forKey: midiNote)
+        } else {
+            activeNoteCounts[midiNote] = remainingCount
+        }
+    }
+
+    private func isNoteActive(_ midiNote: Int) -> Bool {
+        activeNoteCounts[midiNote] != nil
+    }
+
+    private static func cachedKey(for keyFrame: PianoKeyFrame) -> CachedKey {
+        let insetFrame = keyFrame.frame.insetBy(dx: 0.5, dy: 0.5)
+        let path = CGPath(
+            roundedRect: insetFrame,
+            cornerWidth: 4,
+            cornerHeight: 4,
+            transform: nil
+        )
+
+        return CachedKey(keyFrame: keyFrame, path: path)
     }
 }
 

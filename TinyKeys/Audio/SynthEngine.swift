@@ -3,10 +3,18 @@ import AVFAudio
 import Foundation
 
 final class SynthEngine {
-    private enum Event {
-        case noteOn(token: Int, midiNote: Int, velocity: Float, preset: SoundPreset)
-        case noteOff(token: Int)
+    private enum EventKind {
+        case noteOn
+        case noteOff
         case stopAllWaveforms
+    }
+
+    private struct Event {
+        var kind: EventKind = .stopAllWaveforms
+        var token: Int = 0
+        var midiNote: Int = 0
+        var velocity: Float = 0
+        var preset: SoundPreset = .sine
     }
 
     private enum VoiceStage {
@@ -141,7 +149,6 @@ final class SynthEngine {
     private let instrumentMixer = AVAudioMixerNode()
     private let eventLock = NSLock()
     private let pianoLock = NSLock()
-    private var pendingEvents: [Event] = []
     private var voices = Array(repeating: Voice(), count: 24)
     private var sourceNode: AVAudioSourceNode!
     private var activePianoTokens: [Int: UInt8] = [:]
@@ -149,8 +156,15 @@ final class SynthEngine {
     private var currentPreset: SoundPreset = .piano
     private var renderSampleRate: Float = 48_000
     private var configurationObserver: NSObjectProtocol?
+    private let eventBufferCapacity = 256
+    private var eventBuffer: [Event]
+    private var eventReadIndex = 0
+    private var eventWriteIndex = 0
+    private var eventCount = 0
 
     init() {
+        eventBuffer = Array(repeating: Event(), count: eventBufferCapacity)
+
         sourceNode = AVAudioSourceNode { [weak self] _, _, frameCount, audioBufferList -> OSStatus in
             guard let self else {
                 return noErr
@@ -214,7 +228,7 @@ final class SynthEngine {
         case .piano:
             startPianoNote(token: token, midiNote: midiNote, velocity: velocity)
         case .sine, .square, .triangle:
-            enqueue(.noteOn(token: token, midiNote: midiNote, velocity: velocity, preset: currentPreset))
+            enqueue(Event(kind: .noteOn, token: token, midiNote: midiNote, velocity: velocity, preset: currentPreset))
         }
     }
 
@@ -223,7 +237,7 @@ final class SynthEngine {
             return
         }
 
-        enqueue(.noteOff(token: token))
+        enqueue(Event(kind: .noteOff, token: token))
     }
 
     func setVolume(_ volume: Float) {
@@ -241,64 +255,109 @@ final class SynthEngine {
 
     func stopAllNotes() {
         stopAllPianoNotes()
-        enqueue(.stopAllWaveforms)
+        enqueue(Event(kind: .stopAllWaveforms))
     }
 
     private func enqueue(_ event: Event) {
         eventLock.lock()
-        pendingEvents.append(event)
-        eventLock.unlock()
-    }
+        eventBuffer[eventWriteIndex] = event
+        eventWriteIndex = (eventWriteIndex + 1) % eventBuffer.count
 
-    private func drainEvents() -> [Event] {
-        eventLock.lock()
-        let events = pendingEvents
-        pendingEvents.removeAll(keepingCapacity: true)
-        eventLock.unlock()
-        return events
-    }
-
-    private func render(frameCount: Int, audioBufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
-        applyPendingEvents()
-
-        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
-        let floatBuffers: [UnsafeMutableBufferPointer<Float>] = buffers.compactMap { audioBuffer in
-            guard let channelData = audioBuffer.mData?.assumingMemoryBound(to: Float.self) else {
-                return nil
-            }
-
-            return UnsafeMutableBufferPointer(start: channelData, count: frameCount)
+        if eventCount == eventBuffer.count {
+            eventReadIndex = (eventReadIndex + 1) % eventBuffer.count
+        } else {
+            eventCount += 1
         }
 
-        guard !floatBuffers.isEmpty else {
+        eventLock.unlock()
+    }
+
+    private func drainNextEvent() -> Event? {
+        eventLock.lock()
+        defer { eventLock.unlock() }
+
+        guard eventCount > 0 else {
+            return nil
+        }
+
+        let event = eventBuffer[eventReadIndex]
+        eventReadIndex = (eventReadIndex + 1) % eventBuffer.count
+        eventCount -= 1
+
+        return event
+    }
+
+    private func renderMonoSample(frameCount: Int, into buffers: UnsafeMutableAudioBufferListPointer) -> OSStatus {
+        guard frameCount > 0, !buffers.isEmpty else {
             return noErr
         }
 
-        for frame in 0..<frameCount {
-            var mixedSample: Float = 0
-
-            for index in voices.indices {
-                voices[index].advanceEnvelope()
-                mixedSample += voices[index].nextSample()
+        switch buffers.count {
+        case 1:
+            guard let channel0 = buffers[0].mData?.assumingMemoryBound(to: Float.self) else {
+                return noErr
             }
 
-            let outputSample = tanh(mixedSample)
+            for frame in 0..<frameCount {
+                channel0[frame] = nextMixedSample()
+            }
 
-            for buffer in floatBuffers {
-                buffer[frame] = outputSample
+        case 2:
+            guard
+                let channel0 = buffers[0].mData?.assumingMemoryBound(to: Float.self),
+                let channel1 = buffers[1].mData?.assumingMemoryBound(to: Float.self)
+            else {
+                return noErr
+            }
+
+            for frame in 0..<frameCount {
+                let sample = nextMixedSample()
+                channel0[frame] = sample
+                channel1[frame] = sample
+            }
+
+        default:
+            for frame in 0..<frameCount {
+                let sample = nextMixedSample()
+
+                for bufferIndex in buffers.indices {
+                    guard let channel = buffers[bufferIndex].mData?.assumingMemoryBound(to: Float.self) else {
+                        continue
+                    }
+
+                    channel[frame] = sample
+                }
             }
         }
 
         return noErr
     }
 
+    private func nextMixedSample() -> Float {
+        var mixedSample: Float = 0
+
+        for index in voices.indices {
+            voices[index].advanceEnvelope()
+            mixedSample += voices[index].nextSample()
+        }
+
+        return tanh(mixedSample)
+    }
+
+    private func render(frameCount: Int, audioBufferList: UnsafeMutablePointer<AudioBufferList>) -> OSStatus {
+        applyPendingEvents()
+
+        let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
+        return renderMonoSample(frameCount: frameCount, into: buffers)
+    }
+
     private func applyPendingEvents() {
-        for event in drainEvents() {
-            switch event {
-            case let .noteOn(token, midiNote, velocity, preset):
-                startWaveformVoice(token: token, midiNote: midiNote, velocity: velocity, preset: preset)
-            case let .noteOff(token):
-                stopWaveformVoice(token: token)
+        while let event = drainNextEvent() {
+            switch event.kind {
+            case .noteOn:
+                startWaveformVoice(token: event.token, midiNote: event.midiNote, velocity: event.velocity, preset: event.preset)
+            case .noteOff:
+                stopWaveformVoice(token: event.token)
             case .stopAllWaveforms:
                 for index in voices.indices {
                     voices[index].stopImmediately()
