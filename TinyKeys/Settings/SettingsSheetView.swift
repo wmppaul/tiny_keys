@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SettingsSheetView: View {
     @ObservedObject var viewModel: TinyKeysViewModel
-    @ObservedObject private var orientationController = OrientationController.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -68,30 +67,6 @@ struct SettingsSheetView: View {
                         }
                         .pickerStyle(.segmented)
                     }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Interface")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        Text(interfaceDebugLines.joined(separator: "\n"))
-                            .font(.system(.footnote, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Audio Session")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        Text(viewModel.audioSessionManager.debugState.lines.joined(separator: "\n"))
-                            .font(.system(.footnote, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-                    }
                 }
                 .padding(20)
             }
@@ -131,7 +106,7 @@ struct SettingsSheetView: View {
 
     private var appOrientationBinding: Binding<AppOrientationMode> {
         Binding(
-            get: { orientationController.appOrientation },
+            get: { viewModel.orientationController.appOrientation },
             set: { viewModel.updateAppOrientation($0) }
         )
     }
@@ -141,19 +116,5 @@ struct SettingsSheetView: View {
             get: { viewModel.keyboardOrientation },
             set: { viewModel.updateKeyboardOrientation($0) }
         )
-    }
-
-    private var interfaceDebugLines: [String] {
-        var lines = [
-            "App Mode: \(orientationController.appOrientation.title)",
-            "Scene: \(orientationController.currentInterfaceOrientation.tinyKeysDebugName)",
-            "Keyboard: \(viewModel.keyboardOrientation.rawValue)"
-        ]
-
-        if let lastErrorMessage = orientationController.lastErrorMessage {
-            lines.append("Rotation Error: \(lastErrorMessage)")
-        }
-
-        return lines
     }
 }

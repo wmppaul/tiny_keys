@@ -24,8 +24,9 @@ enum VisibleKeySpan: CGFloat, CaseIterable, Identifiable {
 
 enum SoundPreset: String, CaseIterable, Identifiable {
     case piano = "Piano"
-    case electricPiano = "Soft EP"
     case sine = "Sine"
+    case triangle = "Triangle"
+    case square = "Square"
 
     var id: String { rawValue }
 }

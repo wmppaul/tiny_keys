@@ -1,13 +1,12 @@
+import AudioToolbox
 import AVFAudio
 import Foundation
 
 final class SynthEngine {
     private enum Event {
-        case noteOn(token: Int, midiNote: Int, velocity: Float)
+        case noteOn(token: Int, midiNote: Int, velocity: Float, preset: SoundPreset)
         case noteOff(token: Int)
-        case setVolume(Float)
-        case setPreset(SoundPreset)
-        case stopAll
+        case stopAllWaveforms
     }
 
     private enum VoiceStage {
@@ -29,10 +28,8 @@ final class SynthEngine {
     private struct Voice {
         var token: Int = 0
         var midiNote: Int = 0
-        var frequency: Float = 0
         var velocity: Float = 0
         var phase: Float = 0
-        var modPhase: Float = 0
         var stage: VoiceStage = .inactive
         var amplitude: Float = 0
         var attackStep: Float = 0
@@ -40,9 +37,7 @@ final class SynthEngine {
         var releaseStep: Float = 0
         var sustainLevel: Float = 0
         var phaseIncrement: Float = 0
-        var modPhaseIncrement: Float = 0
-        var preset: SoundPreset = .piano
-        var ageInSamples: Int = 0
+        var preset: SoundPreset = .sine
 
         var isActive: Bool {
             stage != .inactive
@@ -58,21 +53,19 @@ final class SynthEngine {
             self.token = token
             self.midiNote = midiNote
             self.velocity = velocity
-            self.frequency = 440 * pow(2, Float(midiNote - 69) / 12)
             self.phase = 0
-            self.modPhase = 0
             self.stage = .attack
             self.amplitude = 0
             self.preset = preset
-            self.ageInSamples = 0
 
+            let frequency = 440 * pow(2, Float(midiNote - 69) / 12)
             let envelope = preset.envelope
+
             self.sustainLevel = envelope.sustain
             self.attackStep = 1 / max(envelope.attack * sampleRate, 1)
             self.decayStep = (1 - envelope.sustain) / max(envelope.decay * sampleRate, 1)
             self.releaseStep = 0
             self.phaseIncrement = (2 * .pi * frequency) / sampleRate
-            self.modPhaseIncrement = phaseIncrement * preset.modulatorRatio
         }
 
         mutating func startRelease(sampleRate: Float) {
@@ -120,43 +113,23 @@ final class SynthEngine {
                 return 0
             }
 
-            ageInSamples += 1
-
             let carrier = sin(phase)
-            let modulator = sin(modPhase)
-
             let rawSample: Float
+
             switch preset {
             case .sine:
                 rawSample = carrier
-            case .electricPiano:
-                let tineTransient = max(0, 1 - (Float(ageInSamples) / 4_200))
-                let bellTransient = max(0, 1 - (Float(ageInSamples) / 1_200))
-                let gentleFM = sin(phase + (0.26 * modulator))
-                rawSample =
-                    (0.64 * gentleFM) +
-                    (0.18 * sin(phase * 2.0 + (0.08 * modulator))) +
-                    (0.10 * tineTransient * sin(phase * 3.01)) +
-                    (0.06 * bellTransient * sin(phase * 5.03)) +
-                    (0.05 * sin(phase * 0.5))
+            case .square:
+                rawSample = carrier >= 0 ? 1 : -1
+            case .triangle:
+                rawSample = (2 / .pi) * asin(carrier)
             case .piano:
-                let transient = max(0, 1 - (Float(ageInSamples) / 900))
-                rawSample =
-                    (0.78 * carrier) +
-                    (0.20 * sin(phase * 2.01)) +
-                    (0.10 * sin(phase * 4.02)) +
-                    (0.05 * transient * sin(modPhase * 5.4))
+                rawSample = carrier
             }
 
             phase += phaseIncrement
-            modPhase += modPhaseIncrement
-
             if phase > 2 * .pi {
                 phase -= 2 * .pi
-            }
-
-            if modPhase > 2 * .pi {
-                modPhase -= 2 * .pi
             }
 
             return rawSample * amplitude * velocity * preset.envelope.gain
@@ -164,12 +137,16 @@ final class SynthEngine {
     }
 
     private let engine = AVAudioEngine()
-    private var sourceNode: AVAudioSourceNode!
+    private let sampler = AVAudioUnitSampler()
+    private let instrumentMixer = AVAudioMixerNode()
     private let eventLock = NSLock()
+    private let pianoLock = NSLock()
     private var pendingEvents: [Event] = []
     private var voices = Array(repeating: Voice(), count: 24)
+    private var sourceNode: AVAudioSourceNode!
+    private var activePianoTokens: [Int: UInt8] = [:]
+    private var activePianoNoteCounts: [UInt8: Int] = [:]
     private var currentPreset: SoundPreset = .piano
-    private var masterVolume: Float = 0.8
     private var renderSampleRate: Float = 48_000
     private var configurationObserver: NSObjectProtocol?
 
@@ -183,10 +160,18 @@ final class SynthEngine {
         }
 
         engine.attach(sourceNode)
+        engine.attach(sampler)
+        engine.attach(instrumentMixer)
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)
-        engine.connect(sourceNode, to: engine.mainMixerNode, format: format)
+        let sourceFormat = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)
+        engine.connect(sourceNode, to: instrumentMixer, format: sourceFormat)
+        engine.connect(sampler, to: instrumentMixer, format: nil)
+        engine.connect(instrumentMixer, to: engine.mainMixerNode, format: sourceFormat)
+
+        instrumentMixer.outputVolume = 0.8
         engine.mainMixerNode.outputVolume = 1
+
+        loadPianoSoundFont()
 
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
@@ -210,7 +195,7 @@ final class SynthEngine {
 
         do {
             try engine.start()
-            renderSampleRate = Float(engine.mainMixerNode.outputFormat(forBus: 0).sampleRate)
+            renderSampleRate = Float(instrumentMixer.outputFormat(forBus: 0).sampleRate)
         } catch {
             print("Tiny Keys audio engine failed to start: \(error.localizedDescription)")
         }
@@ -223,23 +208,40 @@ final class SynthEngine {
     }
 
     func noteOn(token: Int, midiNote: Int, velocity: Float = 1.0) {
-        enqueue(.noteOn(token: token, midiNote: midiNote, velocity: velocity))
+        ensureRunning()
+
+        switch currentPreset {
+        case .piano:
+            startPianoNote(token: token, midiNote: midiNote, velocity: velocity)
+        case .sine, .square, .triangle:
+            enqueue(.noteOn(token: token, midiNote: midiNote, velocity: velocity, preset: currentPreset))
+        }
     }
 
     func noteOff(token: Int) {
+        if stopPianoNoteIfNeeded(token: token) {
+            return
+        }
+
         enqueue(.noteOff(token: token))
     }
 
     func setVolume(_ volume: Float) {
-        enqueue(.setVolume(max(0, min(volume, 1))))
+        instrumentMixer.outputVolume = max(0, min(volume, 1))
     }
 
     func setPreset(_ preset: SoundPreset) {
-        enqueue(.setPreset(preset))
+        guard currentPreset != preset else {
+            return
+        }
+
+        stopAllNotes()
+        currentPreset = preset
     }
 
     func stopAllNotes() {
-        enqueue(.stopAll)
+        stopAllPianoNotes()
+        enqueue(.stopAllWaveforms)
     }
 
     private func enqueue(_ event: Event) {
@@ -280,7 +282,7 @@ final class SynthEngine {
                 mixedSample += voices[index].nextSample()
             }
 
-            let outputSample = tanh(mixedSample * masterVolume)
+            let outputSample = tanh(mixedSample)
 
             for buffer in floatBuffers {
                 buffer[frame] = outputSample
@@ -293,15 +295,11 @@ final class SynthEngine {
     private func applyPendingEvents() {
         for event in drainEvents() {
             switch event {
-            case let .noteOn(token, midiNote, velocity):
-                startVoice(token: token, midiNote: midiNote, velocity: velocity)
+            case let .noteOn(token, midiNote, velocity, preset):
+                startWaveformVoice(token: token, midiNote: midiNote, velocity: velocity, preset: preset)
             case let .noteOff(token):
-                stopVoice(token: token)
-            case let .setVolume(volume):
-                masterVolume = volume
-            case let .setPreset(preset):
-                currentPreset = preset
-            case .stopAll:
+                stopWaveformVoice(token: token)
+            case .stopAllWaveforms:
                 for index in voices.indices {
                     voices[index].stopImmediately()
                 }
@@ -309,7 +307,7 @@ final class SynthEngine {
         }
     }
 
-    private func startVoice(token: Int, midiNote: Int, velocity: Float) {
+    private func startWaveformVoice(token: Int, midiNote: Int, velocity: Float, preset: SoundPreset) {
         let targetIndex = voices.firstIndex(where: { $0.token == token && $0.isActive }) ??
             voices.firstIndex(where: { !$0.isActive }) ??
             voices.enumerated().min(by: { $0.element.amplitude < $1.element.amplitude })?.offset
@@ -323,13 +321,110 @@ final class SynthEngine {
             midiNote: midiNote,
             velocity: velocity,
             sampleRate: renderSampleRate,
-            preset: currentPreset
+            preset: preset
         )
     }
 
-    private func stopVoice(token: Int) {
+    private func stopWaveformVoice(token: Int) {
         for index in voices.indices where voices[index].token == token && voices[index].isActive {
             voices[index].startRelease(sampleRate: renderSampleRate)
+        }
+    }
+
+    private func loadPianoSoundFont() {
+        guard
+            let soundFontURL = Bundle.main.url(forResource: "UprightPianoKW-small-20190703", withExtension: "sf2") ??
+                Bundle.main.url(forResource: "UprightPianoKW-small-20190703", withExtension: "sf2", subdirectory: "SoundFonts")
+        else {
+            print("Tiny Keys could not find UprightPianoKW-small-20190703.sf2 in the app bundle.")
+            return
+        }
+
+        do {
+            try sampler.loadSoundBankInstrument(
+                at: soundFontURL,
+                program: 0,
+                bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB),
+                bankLSB: 0
+            )
+        } catch {
+            print("Tiny Keys failed to load piano sound font: \(error.localizedDescription)")
+        }
+    }
+
+    private func startPianoNote(token: Int, midiNote: Int, velocity: Float) {
+        let clampedNote = UInt8(max(0, min(midiNote, 127)))
+        let clampedVelocity = UInt8(max(1, min(Int(velocity * 127), 127)))
+        var noteToStop: UInt8?
+        var shouldStartNote = false
+
+        pianoLock.lock()
+
+        if let existingNote = activePianoTokens[token] {
+            let remainingCount = (activePianoNoteCounts[existingNote] ?? 1) - 1
+            if remainingCount <= 0 {
+                activePianoNoteCounts.removeValue(forKey: existingNote)
+                noteToStop = existingNote
+            } else {
+                activePianoNoteCounts[existingNote] = remainingCount
+            }
+        }
+
+        activePianoTokens[token] = clampedNote
+        let existingCount = activePianoNoteCounts[clampedNote] ?? 0
+        activePianoNoteCounts[clampedNote] = existingCount + 1
+        shouldStartNote = existingCount == 0
+
+        pianoLock.unlock()
+
+        if let noteToStop {
+            sampler.stopNote(noteToStop, onChannel: 0)
+        }
+
+        if shouldStartNote {
+            sampler.startNote(clampedNote, withVelocity: clampedVelocity, onChannel: 0)
+        }
+    }
+
+    @discardableResult
+    private func stopPianoNoteIfNeeded(token: Int) -> Bool {
+        var noteToStop: UInt8?
+
+        pianoLock.lock()
+
+        guard let note = activePianoTokens.removeValue(forKey: token) else {
+            pianoLock.unlock()
+            return false
+        }
+
+        let remainingCount = (activePianoNoteCounts[note] ?? 1) - 1
+        if remainingCount <= 0 {
+            activePianoNoteCounts.removeValue(forKey: note)
+            noteToStop = note
+        } else {
+            activePianoNoteCounts[note] = remainingCount
+        }
+
+        pianoLock.unlock()
+
+        if let noteToStop {
+            sampler.stopNote(noteToStop, onChannel: 0)
+        }
+
+        return true
+    }
+
+    private func stopAllPianoNotes() {
+        var notesToStop: [UInt8] = []
+
+        pianoLock.lock()
+        notesToStop = Array(activePianoNoteCounts.keys)
+        activePianoTokens.removeAll(keepingCapacity: true)
+        activePianoNoteCounts.removeAll(keepingCapacity: true)
+        pianoLock.unlock()
+
+        for note in notesToStop {
+            sampler.stopNote(note, onChannel: 0)
         }
     }
 }
@@ -339,21 +434,12 @@ private extension SoundPreset {
         switch self {
         case .piano:
             return .init(attack: 0.003, decay: 0.24, sustain: 0.52, release: 0.11, gain: 0.22)
-        case .electricPiano:
-            return .init(attack: 0.005, decay: 0.42, sustain: 0.72, release: 0.26, gain: 0.16)
         case .sine:
-            return .init(attack: 0.002, decay: 0.08, sustain: 0.92, release: 0.08, gain: 0.17)
-        }
-    }
-
-    var modulatorRatio: Float {
-        switch self {
-        case .piano:
-            return 2.1
-        case .electricPiano:
-            return 1.1
-        case .sine:
-            return 1
+            return .init(attack: 0.002, decay: 0.08, sustain: 0.92, release: 0.08, gain: 0.18)
+        case .square:
+            return .init(attack: 0.002, decay: 0.06, sustain: 0.78, release: 0.06, gain: 0.10)
+        case .triangle:
+            return .init(attack: 0.002, decay: 0.08, sustain: 0.88, release: 0.08, gain: 0.15)
         }
     }
 }
