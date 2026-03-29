@@ -8,7 +8,7 @@ Tiny Keys is a minimal iPhone piano keyboard utility.
 
 For support, bug reports, or feature requests, contact:
 
-- `your-email@example.com`
+- `tonewheelapps@gmail.com`
 
 ## About The App
 
@@ -25,4 +25,3 @@ Tiny Keys is designed for quick melody checking by ear on iPhone. It supports:
 Privacy policy:
 
 - link to your public privacy policy page here
-

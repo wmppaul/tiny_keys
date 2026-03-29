@@ -35,5 +35,4 @@ If Tiny Keys changes in a way that affects privacy, this policy will be updated 
 
 For privacy questions, contact:
 
-- `your-email@example.com`
-
+- `tonewheelapps@gmail.com`
