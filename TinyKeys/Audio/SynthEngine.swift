@@ -7,6 +7,7 @@ final class SynthEngine {
         case noteOn
         case noteOff
         case stopAllWaveforms
+        case updatePitchOffset
     }
 
     private struct Event {
@@ -15,6 +16,7 @@ final class SynthEngine {
         var midiNote: Int = 0
         var velocity: Float = 0
         var preset: SoundPreset = .sine
+        var pitchOffsetCents: Float = 0
     }
 
     private enum VoiceStage {
@@ -56,7 +58,8 @@ final class SynthEngine {
             midiNote: Int,
             velocity: Float,
             sampleRate: Float,
-            preset: SoundPreset
+            preset: SoundPreset,
+            pitchOffsetCents: Float
         ) {
             self.token = token
             self.midiNote = midiNote
@@ -66,14 +69,29 @@ final class SynthEngine {
             self.amplitude = 0
             self.preset = preset
 
-            let frequency = 440 * pow(2, Float(midiNote - 69) / 12)
             let envelope = preset.envelope
 
             self.sustainLevel = envelope.sustain
             self.attackStep = 1 / max(envelope.attack * sampleRate, 1)
             self.decayStep = (1 - envelope.sustain) / max(envelope.decay * sampleRate, 1)
             self.releaseStep = 0
-            self.phaseIncrement = (2 * .pi * frequency) / sampleRate
+            self.phaseIncrement = Self.phaseIncrement(
+                midiNote: midiNote,
+                sampleRate: sampleRate,
+                pitchOffsetCents: pitchOffsetCents
+            )
+        }
+
+        mutating func retune(sampleRate: Float, pitchOffsetCents: Float) {
+            guard isActive else {
+                return
+            }
+
+            phaseIncrement = Self.phaseIncrement(
+                midiNote: midiNote,
+                sampleRate: sampleRate,
+                pitchOffsetCents: pitchOffsetCents
+            )
         }
 
         mutating func startRelease(sampleRate: Float) {
@@ -142,6 +160,11 @@ final class SynthEngine {
 
             return rawSample * amplitude * velocity * preset.envelope.gain
         }
+
+        private static func phaseIncrement(midiNote: Int, sampleRate: Float, pitchOffsetCents: Float) -> Float {
+            let frequency = 440 * pow(2, (Float(midiNote - 69) / 12) + (pitchOffsetCents / 1200))
+            return (2 * .pi * frequency) / sampleRate
+        }
     }
 
     private let engine = AVAudioEngine()
@@ -154,6 +177,7 @@ final class SynthEngine {
     private var activePianoTokens: [Int: UInt8] = [:]
     private var activePianoNoteCounts: [UInt8: Int] = [:]
     private var currentPreset: SoundPreset = .piano
+    private var waveformPitchOffsetCents: Float = 0
     private var renderSampleRate: Float = 48_000
     private var configurationObserver: NSObjectProtocol?
     private let eventBufferCapacity = 256
@@ -256,6 +280,12 @@ final class SynthEngine {
     func stopAllNotes() {
         stopAllPianoNotes()
         enqueue(Event(kind: .stopAllWaveforms))
+    }
+
+    func setPitchOffsetCents(_ cents: Float) {
+        let clamped = max(-50, min(cents, 50))
+        sampler.globalTuning = clamped
+        enqueue(Event(kind: .updatePitchOffset, pitchOffsetCents: clamped))
     }
 
     private func enqueue(_ event: Event) {
@@ -362,6 +392,11 @@ final class SynthEngine {
                 for index in voices.indices {
                     voices[index].stopImmediately()
                 }
+            case .updatePitchOffset:
+                waveformPitchOffsetCents = event.pitchOffsetCents
+                for index in voices.indices {
+                    voices[index].retune(sampleRate: renderSampleRate, pitchOffsetCents: waveformPitchOffsetCents)
+                }
             }
         }
     }
@@ -380,7 +415,8 @@ final class SynthEngine {
             midiNote: midiNote,
             velocity: velocity,
             sampleRate: renderSampleRate,
-            preset: preset
+            preset: preset,
+            pitchOffsetCents: waveformPitchOffsetCents
         )
     }
 

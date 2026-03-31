@@ -56,6 +56,37 @@ struct SettingsSheetView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Pitch Correction")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Text("\(viewModel.pitchOffsetDisplayText) (\(viewModel.tuningStandardDisplayText))")
+                                    .font(.footnote)
+                                    .monospacedDigit()
+                            }
+
+                            Spacer()
+
+                            Button {
+                                viewModel.resetPitchOffset()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!viewModel.hasPitchOffset)
+                            .opacity(viewModel.hasPitchOffset ? 1 : 0.45)
+                            .accessibilityLabel("Reset pitch correction")
+                        }
+
+                        Slider(value: pitchOffsetBinding, in: -50...50, step: 1)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
                         Text("Sound")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -101,6 +132,13 @@ struct SettingsSheetView: View {
         Binding(
             get: { viewModel.selectedSound },
             set: { viewModel.updateSound($0) }
+        )
+    }
+
+    private var pitchOffsetBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.pitchOffsetCents },
+            set: { viewModel.updatePitchOffsetCents($0) }
         )
     }
 

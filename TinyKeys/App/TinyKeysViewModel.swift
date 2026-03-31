@@ -11,6 +11,7 @@ final class TinyKeysViewModel: ObservableObject {
     @Published private(set) var visibleWhiteStart: CGFloat
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
+    @Published private(set) var pitchOffsetCents: Double = 0
     @Published private(set) var keyboardOrientation: KeyboardOrientationMode
     @Published var isSettingsPresented = false
 
@@ -39,6 +40,7 @@ final class TinyKeysViewModel: ObservableObject {
         synthEngine.start()
         synthEngine.setVolume(Float(volume))
         synthEngine.setPreset(selectedSound)
+        synthEngine.setPitchOffsetCents(0)
     }
 
     func activateAudioIfNeeded() {
@@ -81,6 +83,20 @@ final class TinyKeysViewModel: ObservableObject {
         synthEngine.setPreset(sound)
     }
 
+    func updatePitchOffsetCents(_ cents: Double) {
+        let clamped = min(max(cents, -50), 50).rounded()
+        guard pitchOffsetCents != clamped else {
+            return
+        }
+
+        pitchOffsetCents = clamped
+        synthEngine.setPitchOffsetCents(Float(clamped))
+    }
+
+    func resetPitchOffset() {
+        updatePitchOffsetCents(0)
+    }
+
     func updateAppOrientation(_ orientation: AppOrientationMode) {
         orientationController.updateAppOrientation(orientation)
     }
@@ -97,5 +113,25 @@ final class TinyKeysViewModel: ObservableObject {
 
     func updateInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
         orientationController.updateCurrentInterfaceOrientation(orientation)
+    }
+
+    var pitchOffsetDisplayText: String {
+        let rounded = Int(pitchOffsetCents.rounded())
+        if rounded > 0 {
+            return String(format: "+%d¢", rounded)
+        } else if rounded < 0 {
+            return String(format: "%d¢", rounded)
+        } else {
+            return "0¢"
+        }
+    }
+
+    var tuningStandardDisplayText: String {
+        let frequency = 440 * pow(2, pitchOffsetCents / 1200)
+        return String(format: "A%.1f", frequency)
+    }
+
+    var hasPitchOffset: Bool {
+        abs(pitchOffsetCents) >= 0.5
     }
 }
