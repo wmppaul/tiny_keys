@@ -48,6 +48,8 @@ Tiny Keys now includes a dedicated tuning screen for built-in temperaments, key 
 
 The tuning model lives in [`TinyKeys/Models/Tuning.swift`](./TinyKeys/Models/Tuning.swift), the per-note pitch-class offset logic is applied in [`TinyKeys/Audio/TuningEngine.swift`](./TinyKeys/Audio/TuningEngine.swift) and [`TinyKeys/Audio/SynthEngine.swift`](./TinyKeys/Audio/SynthEngine.swift), the editor UI lives in [`TinyKeys/Settings/CustomTuningEditorView.swift`](./TinyKeys/Settings/CustomTuningEditorView.swift), and saved custom tunings are stored locally through [`TinyKeys/Storage/TuningPresetStore.swift`](./TinyKeys/Storage/TuningPresetStore.swift).
 
+A code-derived cents table for every built-in temperament, plus source cross-check notes, lives in [`docs/tuning-reference.md`](./docs/tuning-reference.md).
+
 ## Keyboard navigation
 
 The keyboard itself is not a scroll view. Dragging on keys plays notes. Horizontal navigation happens only through the thin strip above the keyboard, implemented in [`TinyKeys/Keyboard/KeyboardNavigationStrip.swift`](./TinyKeys/Keyboard/KeyboardNavigationStrip.swift).
