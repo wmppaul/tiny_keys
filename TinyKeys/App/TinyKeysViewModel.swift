@@ -13,6 +13,7 @@ final class TinyKeysViewModel: ObservableObject {
     @Published private(set) var selectedSound: SoundPreset = .piano
     @Published private(set) var pitchOffsetCents: Double = 0
     @Published private(set) var tuningSelection: TuningSelection
+    @Published private(set) var savedCustomTunings: [SavedCustomTuning] = []
     @Published private(set) var isDroneModeEnabled: Bool
     @Published private(set) var keyboardOrientation: KeyboardOrientationMode
     @Published private(set) var latchedDroneNotes: [Int] = []
@@ -20,9 +21,11 @@ final class TinyKeysViewModel: ObservableObject {
     @Published var isSettingsPresented = false
 
     private let synthEngine: SynthEngine
+    private let tuningPresetStore = TuningPresetStore()
     private let defaults = UserDefaults.standard
     private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
     private let droneModeEnabledKey = "tinykeys.droneModeEnabled"
+    private let tuningSelectionDataKey = "tinykeys.tuningSelectionData"
     private let temperamentKey = "tinykeys.temperament"
     private let tuningKeyCenterKey = "tinykeys.tuningKeyCenter"
     private var hasStoredKeyboardOrientation = false
@@ -30,33 +33,62 @@ final class TinyKeysViewModel: ObservableObject {
 
     init() {
         let synthEngine = SynthEngine()
-        self.synthEngine = synthEngine
-        self.visibleWhiteStart = keyboardLayout.defaultVisibleStart(for: .oneAndHalf)
+        let defaults = UserDefaults.standard
+        let tuningPresetStore = TuningPresetStore()
+        let savedCustomTunings = tuningPresetStore.load().sorted(by: Self.savedTuningSort)
         let storedTemperament = defaults.string(forKey: temperamentKey).flatMap(TemperamentPreset.init(rawValue:)) ?? .equal
         let storedKeyCenter = defaults.object(forKey: tuningKeyCenterKey)
             .flatMap { $0 as? Int }
             .flatMap(PitchClass.init(rawValue:)) ?? .c
-        self.tuningSelection = TuningSelection(temperament: storedTemperament, keyCenter: storedKeyCenter)
-        self.selectedSound = storedTemperament.supportsPiano ? .piano : .sine
-        self.isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
-        if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
-            self.keyboardOrientation = storedOrientation
-            self.hasStoredKeyboardOrientation = true
+        var initialTuningSelection: TuningSelection
+
+        if
+            let data = defaults.data(forKey: tuningSelectionDataKey),
+            let decodedSelection = try? JSONDecoder().decode(TuningSelection.self, from: data)
+        {
+            initialTuningSelection = decodedSelection
         } else {
-            self.keyboardOrientation = .landscapeRight
-            self.hasStoredKeyboardOrientation = true
+            initialTuningSelection = TuningSelection(temperament: storedTemperament, keyCenter: storedKeyCenter)
+        }
+        initialTuningSelection.customOffsetsCents = initialTuningSelection.normalizedCustomOffsetsCents
+        if let selectedID = initialTuningSelection.selectedCustomTuningID,
+           let savedTuning = savedCustomTunings.first(where: { $0.id == selectedID }),
+           initialTuningSelection.customName == nil {
+            initialTuningSelection.customName = savedTuning.name
+        }
+
+        let selectedSound: SoundPreset = initialTuningSelection.supportsPiano ? .piano : .sine
+        let isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
+        let initialKeyboardOrientation: KeyboardOrientationMode
+
+        if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
+            initialKeyboardOrientation = storedOrientation
+        } else {
+            initialKeyboardOrientation = .landscapeRight
             defaults.set(KeyboardOrientationMode.landscapeRight.rawValue, forKey: keyboardOrientationKey)
         }
-        self.audioSessionManager = AudioSessionManager {
+
+        let audioSessionManager = AudioSessionManager {
             synthEngine.ensureRunning()
         }
+
+        self.synthEngine = synthEngine
+        self.audioSessionManager = audioSessionManager
+        self.visibleWhiteStart = PianoKeyboardLayout().defaultVisibleStart(for: .oneAndHalf)
+        self.savedCustomTunings = savedCustomTunings
+        self.tuningSelection = initialTuningSelection
+        self.selectedSound = selectedSound
+        self.isDroneModeEnabled = isDroneModeEnabled
+        self.keyboardOrientation = initialKeyboardOrientation
+        self.hasStoredKeyboardOrientation = true
 
         audioSessionManager.configureForMixingPlayback()
         synthEngine.start()
         synthEngine.setVolume(Float(volume))
         synthEngine.setPreset(selectedSound)
         synthEngine.setPitchOffsetCents(0)
-        synthEngine.setPitchClassOffsets(TuningEngine(selection: tuningSelection).pitchClassOffsetsCents())
+        synthEngine.setPitchClassOffsets(TuningEngine(selection: initialTuningSelection).pitchClassOffsetsCents())
+        persistTuningSelection()
     }
 
     func activateAudioIfNeeded() {
@@ -147,13 +179,25 @@ final class TinyKeysViewModel: ObservableObject {
         settingsNavigationPath = path
     }
 
+    func startCustomTuningFromCurrentSelection() {
+        guard tuningSelection.temperament != .custom else {
+            return
+        }
+
+        let sourceTemperament = tuningSelection.temperament
+        tuningSelection.temperament = .custom
+        tuningSelection.customOffsetsCents = sourceTemperament.tonicRelativeOffsetsCents
+        tuningSelection.selectedCustomTuningID = nil
+        tuningSelection.customName = nil
+        applyTuningSelection()
+    }
+
     func updateTemperament(_ temperament: TemperamentPreset) {
         guard tuningSelection.temperament != temperament else {
             return
         }
 
         tuningSelection.temperament = temperament
-        defaults.set(temperament.rawValue, forKey: temperamentKey)
         applyTuningSelection()
     }
 
@@ -163,8 +207,155 @@ final class TinyKeysViewModel: ObservableObject {
         }
 
         tuningSelection.keyCenter = keyCenter
-        defaults.set(keyCenter.rawValue, forKey: tuningKeyCenterKey)
         applyTuningSelection()
+    }
+
+    func customOffset(for degree: Int) -> Double {
+        guard (0..<12).contains(degree) else {
+            return 0
+        }
+
+        return tuningSelection.normalizedCustomOffsetsCents[degree]
+    }
+
+    func updateCustomOffset(_ cents: Double, at degree: Int) {
+        guard (0..<12).contains(degree) else {
+            return
+        }
+
+        let clamped = min(max(cents, -100), 100)
+        let rounded = (clamped * 10).rounded() / 10
+        var offsets = tuningSelection.normalizedCustomOffsetsCents
+
+        guard offsets[degree] != rounded else {
+            return
+        }
+
+        offsets[degree] = rounded
+        tuningSelection.temperament = .custom
+        tuningSelection.customOffsetsCents = offsets
+        applyTuningSelection()
+    }
+
+    func nudgeCustomOffset(at degree: Int, by delta: Double) {
+        updateCustomOffset(customOffset(for: degree) + delta, at: degree)
+    }
+
+    func resetCustomOffsetsToEqual() {
+        tuningSelection.temperament = .custom
+        tuningSelection.customOffsetsCents = Array(repeating: 0, count: 12)
+        applyTuningSelection()
+    }
+
+    func applySavedCustomTuning(_ preset: SavedCustomTuning) {
+        tuningSelection.temperament = .custom
+        tuningSelection.keyCenter = preset.keyCenter
+        tuningSelection.customOffsetsCents = preset.offsetsCents
+        tuningSelection.selectedCustomTuningID = preset.id
+        tuningSelection.customName = preset.name
+        applyTuningSelection()
+    }
+
+    func saveCurrentCustomTuning(named name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            return
+        }
+
+        tuningSelection.temperament = .custom
+        let preset = SavedCustomTuning(
+            name: trimmedName,
+            keyCenter: tuningSelection.keyCenter,
+            offsetsCents: tuningSelection.normalizedCustomOffsetsCents
+        )
+
+        savedCustomTunings.append(preset)
+        savedCustomTunings.sort(by: Self.savedTuningSort)
+        tuningSelection.selectedCustomTuningID = preset.id
+        tuningSelection.customName = preset.name
+        persistSavedCustomTunings()
+        persistTuningSelection()
+    }
+
+    func updateCurrentCustomTuning() {
+        guard let selectedID = tuningSelection.selectedCustomTuningID,
+              let index = savedCustomTunings.firstIndex(where: { $0.id == selectedID }) else {
+            return
+        }
+
+        let existing = savedCustomTunings[index]
+        let updated = SavedCustomTuning(
+            id: existing.id,
+            name: tuningSelection.customName ?? existing.name,
+            keyCenter: tuningSelection.keyCenter,
+            offsetsCents: tuningSelection.normalizedCustomOffsetsCents,
+            createdAt: existing.createdAt,
+            updatedAt: Date()
+        )
+
+        savedCustomTunings[index] = updated
+        savedCustomTunings.sort(by: Self.savedTuningSort)
+        tuningSelection.customName = updated.name
+        persistSavedCustomTunings()
+        persistTuningSelection()
+    }
+
+    func renameCustomTuning(id: UUID, to name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              let index = savedCustomTunings.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let existing = savedCustomTunings[index]
+        let updated = SavedCustomTuning(
+            id: existing.id,
+            name: trimmedName,
+            keyCenter: existing.keyCenter,
+            offsetsCents: existing.offsetsCents,
+            createdAt: existing.createdAt,
+            updatedAt: Date()
+        )
+
+        savedCustomTunings[index] = updated
+        savedCustomTunings.sort(by: Self.savedTuningSort)
+
+        if tuningSelection.selectedCustomTuningID == id {
+            tuningSelection.customName = trimmedName
+            persistTuningSelection()
+        }
+
+        persistSavedCustomTunings()
+    }
+
+    func duplicateCustomTuning(id: UUID, named name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty,
+              let existing = savedCustomTunings.first(where: { $0.id == id }) else {
+            return
+        }
+
+        let duplicated = SavedCustomTuning(
+            name: trimmedName,
+            keyCenter: existing.keyCenter,
+            offsetsCents: existing.offsetsCents
+        )
+
+        savedCustomTunings.append(duplicated)
+        savedCustomTunings.sort(by: Self.savedTuningSort)
+        persistSavedCustomTunings()
+    }
+
+    func deleteCustomTuning(id: UUID) {
+        savedCustomTunings.removeAll { $0.id == id }
+
+        if tuningSelection.selectedCustomTuningID == id {
+            tuningSelection.selectedCustomTuningID = nil
+            tuningSelection.customName = nil
+            persistTuningSelection()
+        }
+
+        persistSavedCustomTunings()
     }
 
     func updateLatchedDroneNotes(_ midiNotes: [Int]) {
@@ -227,6 +418,10 @@ final class TinyKeysViewModel: ObservableObject {
         tuningSelection.hasUnequalTemperament
     }
 
+    var isCustomTuningSelected: Bool {
+        tuningSelection.isCustom
+    }
+
     var isPianoAvailableForCurrentTuning: Bool {
         tuningSelection.supportsPiano
     }
@@ -247,6 +442,63 @@ final class TinyKeysViewModel: ObservableObject {
         hasNonEqualTemperament
     }
 
+    var selectedSavedCustomTuning: SavedCustomTuning? {
+        guard let selectedID = tuningSelection.selectedCustomTuningID else {
+            return nil
+        }
+
+        return savedCustomTunings.first(where: { $0.id == selectedID })
+    }
+
+    var hasSavedCustomTunings: Bool {
+        !savedCustomTunings.isEmpty
+    }
+
+    var canUpdateSelectedCustomTuning: Bool {
+        selectedSavedCustomTuning != nil
+    }
+
+    var isSelectedCustomTuningModified: Bool {
+        guard let selectedPreset = selectedSavedCustomTuning else {
+            return false
+        }
+
+        return selectedPreset.keyCenter != tuningSelection.keyCenter
+            || selectedPreset.offsetsCents != tuningSelection.normalizedCustomOffsetsCents
+    }
+
+    var customTuningStatusText: String {
+        guard tuningSelection.temperament == .custom else {
+            return "Copy any built-in temperament into an editable 12-note custom tuning."
+        }
+
+        if let selectedPreset = selectedSavedCustomTuning {
+            if isSelectedCustomTuningModified {
+                return "Editing \(selectedPreset.name) with unsaved changes."
+            }
+
+            return "Loaded from \(selectedPreset.name)."
+        }
+
+        return "Unsaved custom tuning stored only in the current session until you save it."
+    }
+
+    var suggestedCustomTuningName: String {
+        if let customName = tuningSelection.customName, !customName.isEmpty {
+            return customName
+        }
+
+        if tuningSelection.temperament == .custom {
+            return "Custom · \(tuningSelection.keyCenter.title)"
+        }
+
+        return "\(tuningSelection.temperament.title) · \(tuningSelection.keyCenter.title)"
+    }
+
+    var customEditorPitchClasses: [PitchClass] {
+        PitchClass.orderedStarting(at: tuningSelection.keyCenter)
+    }
+
     private func applyTuningSelection() {
         let offsets = TuningEngine(selection: tuningSelection).pitchClassOffsetsCents()
         synthEngine.setPitchClassOffsets(offsets)
@@ -254,5 +506,31 @@ final class TinyKeysViewModel: ObservableObject {
         if !isPianoAvailableForCurrentTuning, selectedSound == .piano {
             updateSound(.sine)
         }
+
+        defaults.set(tuningSelection.temperament.rawValue, forKey: temperamentKey)
+        defaults.set(tuningSelection.keyCenter.rawValue, forKey: tuningKeyCenterKey)
+        persistTuningSelection()
+    }
+
+    private func persistSavedCustomTunings() {
+        do {
+            try tuningPresetStore.save(savedCustomTunings)
+        } catch {
+            assertionFailure("Failed to save custom tunings: \(error)")
+        }
+    }
+
+    private func persistTuningSelection() {
+        if let data = try? JSONEncoder().encode(tuningSelection) {
+            defaults.set(data, forKey: tuningSelectionDataKey)
+        }
+    }
+
+    private static func savedTuningSort(lhs: SavedCustomTuning, rhs: SavedCustomTuning) -> Bool {
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+
+        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
     }
 }

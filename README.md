@@ -38,14 +38,15 @@ The sampled piano comes from the FreePats `Upright Piano KW` small-size sound ba
 
 ## Tuning
 
-Tiny Keys now includes a dedicated tuning screen for built-in temperaments and key center selection.
+Tiny Keys now includes a dedicated tuning screen for built-in temperaments, key center selection, and locally saved custom tunings.
 
 - `Equal`, `Just`, `Pythagorean`, `Meantone`, `Werckmeister III`, `Kirnberger III`, `Vallotti`, and `Young II` are available
 - unequal temperaments are keyed, so the chosen tonic rotates the temperament across the keyboard
+- `Custom` tunings expose 12 tonic-relative cents offsets with local save/recall on the device
 - the current phase applies unequal temperament retuning to the synth sounds (`Sine`, `Triangle`, `Square`)
 - `Piano` remains available in `Equal` temperament only until per-note sampler retuning is added
 
-The tuning model lives in [`TinyKeys/Models/Tuning.swift`](./TinyKeys/Models/Tuning.swift), and the per-note pitch-class offset logic is applied in [`TinyKeys/Audio/TuningEngine.swift`](./TinyKeys/Audio/TuningEngine.swift) and [`TinyKeys/Audio/SynthEngine.swift`](./TinyKeys/Audio/SynthEngine.swift).
+The tuning model lives in [`TinyKeys/Models/Tuning.swift`](./TinyKeys/Models/Tuning.swift), the per-note pitch-class offset logic is applied in [`TinyKeys/Audio/TuningEngine.swift`](./TinyKeys/Audio/TuningEngine.swift) and [`TinyKeys/Audio/SynthEngine.swift`](./TinyKeys/Audio/SynthEngine.swift), the editor UI lives in [`TinyKeys/Settings/CustomTuningEditorView.swift`](./TinyKeys/Settings/CustomTuningEditorView.swift), and saved custom tunings are stored locally through [`TinyKeys/Storage/TuningPresetStore.swift`](./TinyKeys/Storage/TuningPresetStore.swift).
 
 ## Keyboard navigation
 

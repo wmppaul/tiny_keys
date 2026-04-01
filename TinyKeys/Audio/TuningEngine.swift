@@ -15,6 +15,10 @@ struct TuningEngine {
 
     func offsetCents(for pitchClass: PitchClass) -> Double {
         let degree = (pitchClass.rawValue - selection.keyCenter.rawValue + 12) % 12
+        if selection.temperament == .custom {
+            return selection.normalizedCustomOffsetsCents[degree]
+        }
+
         return selection.temperament.tonicRelativeOffsetsCents[degree]
     }
 }

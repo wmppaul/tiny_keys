@@ -33,9 +33,46 @@ enum PitchClass: Int, CaseIterable, Identifiable, Codable {
         }
     }
 
+    var enharmonicTitle: String {
+        switch self {
+        case .c:
+            return "C"
+        case .db:
+            return "C#/Db"
+        case .d:
+            return "D"
+        case .eb:
+            return "D#/Eb"
+        case .e:
+            return "E"
+        case .f:
+            return "F"
+        case .gb:
+            return "F#/Gb"
+        case .g:
+            return "G"
+        case .ab:
+            return "G#/Ab"
+        case .a:
+            return "A"
+        case .bb:
+            return "A#/Bb"
+        case .b:
+            return "B"
+        }
+    }
+
     init(midiNote: Int) {
         let normalized = ((midiNote % 12) + 12) % 12
         self = PitchClass(rawValue: normalized) ?? .c
+    }
+
+    func advanced(by semitones: Int) -> PitchClass {
+        PitchClass(rawValue: (rawValue + semitones + 12) % 12) ?? .c
+    }
+
+    static func orderedStarting(at tonic: PitchClass) -> [PitchClass] {
+        (0..<12).map { tonic.advanced(by: $0) }
     }
 }
 
@@ -48,6 +85,7 @@ enum TemperamentPreset: String, CaseIterable, Identifiable, Codable {
     case kirnbergerIII
     case vallotti
     case youngII
+    case custom
 
     var id: String { rawValue }
 
@@ -69,6 +107,8 @@ enum TemperamentPreset: String, CaseIterable, Identifiable, Codable {
             return "Vallotti"
         case .youngII:
             return "Young II"
+        case .custom:
+            return "Custom"
         }
     }
 
@@ -90,6 +130,8 @@ enum TemperamentPreset: String, CaseIterable, Identifiable, Codable {
             return "Balanced well temperament with gentle key color."
         case .youngII:
             return "Young 1799, a rotated Vallotti-style well temperament."
+        case .custom:
+            return "Editable 12-note offsets stored relative to the selected tonic."
         }
     }
 
@@ -139,17 +181,65 @@ enum TemperamentPreset: String, CaseIterable, Identifiable, Codable {
                 0.000, -5.860, -5.860, 1.960, -9.780, -1.950,
                 -7.820, -1.950, -5.860, -7.820, 0.000, -9.780,
             ]
+        case .custom:
+            return Array(repeating: 0, count: 12)
         }
+    }
+}
+
+struct SavedCustomTuning: Identifiable, Codable, Equatable {
+    var id: UUID
+    var name: String
+    var keyCenter: PitchClass
+    var offsetsCents: [Double]
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        keyCenter: PitchClass,
+        offsetsCents: [Double],
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.keyCenter = keyCenter
+        self.offsetsCents = Self.normalizedOffsets(from: offsetsCents)
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var subtitle: String {
+        "Tonic \(keyCenter.title) · 12-note custom"
+    }
+
+    static func normalizedOffsets(from offsets: [Double]) -> [Double] {
+        var normalized = Array(offsets.prefix(12))
+
+        if normalized.count < 12 {
+            normalized.append(contentsOf: repeatElement(0, count: 12 - normalized.count))
+        }
+
+        return normalized
     }
 }
 
 struct TuningSelection: Equatable, Codable {
     var temperament: TemperamentPreset = .equal
     var keyCenter: PitchClass = .c
+    var customOffsetsCents: [Double] = Array(repeating: 0, count: 12)
+    var selectedCustomTuningID: UUID?
+    var customName: String?
 
     var title: String {
         if temperament == .equal {
             return temperament.title
+        }
+
+        if temperament == .custom {
+            return customName ?? "Custom · \(keyCenter.title)"
         }
 
         return "\(temperament.title) · \(keyCenter.title)"
@@ -161,5 +251,13 @@ struct TuningSelection: Equatable, Codable {
 
     var hasUnequalTemperament: Bool {
         temperament != .equal
+    }
+
+    var isCustom: Bool {
+        temperament == .custom
+    }
+
+    var normalizedCustomOffsetsCents: [Double] {
+        SavedCustomTuning.normalizedOffsets(from: customOffsetsCents)
     }
 }
