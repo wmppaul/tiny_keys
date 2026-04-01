@@ -36,6 +36,17 @@ Tiny Keys now uses a hybrid sound setup:
 
 The sampled piano comes from the FreePats `Upright Piano KW` small-size sound bank, which is published under `CC0`.
 
+## Tuning
+
+Tiny Keys now includes a dedicated tuning screen for built-in temperaments and key center selection.
+
+- `Equal`, `Just`, `Pythagorean`, `Meantone`, `Werckmeister III`, `Kirnberger III`, `Vallotti`, and `Young II` are available
+- unequal temperaments are keyed, so the chosen tonic rotates the temperament across the keyboard
+- the current phase applies unequal temperament retuning to the synth sounds (`Sine`, `Triangle`, `Square`)
+- `Piano` remains available in `Equal` temperament only until per-note sampler retuning is added
+
+The tuning model lives in [`TinyKeys/Models/Tuning.swift`](./TinyKeys/Models/Tuning.swift), and the per-note pitch-class offset logic is applied in [`TinyKeys/Audio/TuningEngine.swift`](./TinyKeys/Audio/TuningEngine.swift) and [`TinyKeys/Audio/SynthEngine.swift`](./TinyKeys/Audio/SynthEngine.swift).
+
 ## Keyboard navigation
 
 The keyboard itself is not a scroll view. Dragging on keys plays notes. Horizontal navigation happens only through the thin strip above the keyboard, implemented in [`TinyKeys/Keyboard/KeyboardNavigationStrip.swift`](./TinyKeys/Keyboard/KeyboardNavigationStrip.swift).

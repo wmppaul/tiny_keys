@@ -8,6 +8,7 @@ final class SynthEngine {
         case noteOff
         case stopAllWaveforms
         case updatePitchOffset
+        case updatePitchClassOffsets
     }
 
     private struct Event {
@@ -59,7 +60,8 @@ final class SynthEngine {
             velocity: Float,
             sampleRate: Float,
             preset: SoundPreset,
-            pitchOffsetCents: Float
+            pitchOffsetCents: Float,
+            pitchClassOffsetCents: Float
         ) {
             self.token = token
             self.midiNote = midiNote
@@ -78,11 +80,11 @@ final class SynthEngine {
             self.phaseIncrement = Self.phaseIncrement(
                 midiNote: midiNote,
                 sampleRate: sampleRate,
-                pitchOffsetCents: pitchOffsetCents
+                pitchOffsetCents: pitchOffsetCents + pitchClassOffsetCents
             )
         }
 
-        mutating func retune(sampleRate: Float, pitchOffsetCents: Float) {
+        mutating func retune(sampleRate: Float, pitchOffsetCents: Float, pitchClassOffsetCents: Float) {
             guard isActive else {
                 return
             }
@@ -90,7 +92,7 @@ final class SynthEngine {
             phaseIncrement = Self.phaseIncrement(
                 midiNote: midiNote,
                 sampleRate: sampleRate,
-                pitchOffsetCents: pitchOffsetCents
+                pitchOffsetCents: pitchOffsetCents + pitchClassOffsetCents
             )
         }
 
@@ -178,6 +180,8 @@ final class SynthEngine {
     private var activePianoNoteCounts: [UInt8: Int] = [:]
     private var currentPreset: SoundPreset = .piano
     private var waveformPitchOffsetCents: Float = 0
+    private var waveformPitchClassOffsets = Array(repeating: Float(0), count: 12)
+    private var pendingWaveformPitchClassOffsets = Array(repeating: Float(0), count: 12)
     private var renderSampleRate: Float = 48_000
     private var configurationObserver: NSObjectProtocol?
     private let eventBufferCapacity = 256
@@ -288,6 +292,18 @@ final class SynthEngine {
         enqueue(Event(kind: .updatePitchOffset, pitchOffsetCents: clamped))
     }
 
+    func setPitchClassOffsets(_ offsets: [Float]) {
+        guard offsets.count == 12 else {
+            return
+        }
+
+        eventLock.lock()
+        pendingWaveformPitchClassOffsets = offsets
+        eventLock.unlock()
+
+        enqueue(Event(kind: .updatePitchClassOffsets))
+    }
+
     private func enqueue(_ event: Event) {
         eventLock.lock()
         eventBuffer[eventWriteIndex] = event
@@ -395,7 +411,22 @@ final class SynthEngine {
             case .updatePitchOffset:
                 waveformPitchOffsetCents = event.pitchOffsetCents
                 for index in voices.indices {
-                    voices[index].retune(sampleRate: renderSampleRate, pitchOffsetCents: waveformPitchOffsetCents)
+                    voices[index].retune(
+                        sampleRate: renderSampleRate,
+                        pitchOffsetCents: waveformPitchOffsetCents,
+                        pitchClassOffsetCents: pitchClassOffset(for: voices[index].midiNote)
+                    )
+                }
+            case .updatePitchClassOffsets:
+                eventLock.lock()
+                waveformPitchClassOffsets = pendingWaveformPitchClassOffsets
+                eventLock.unlock()
+                for index in voices.indices {
+                    voices[index].retune(
+                        sampleRate: renderSampleRate,
+                        pitchOffsetCents: waveformPitchOffsetCents,
+                        pitchClassOffsetCents: pitchClassOffset(for: voices[index].midiNote)
+                    )
                 }
             }
         }
@@ -416,7 +447,8 @@ final class SynthEngine {
             velocity: velocity,
             sampleRate: renderSampleRate,
             preset: preset,
-            pitchOffsetCents: waveformPitchOffsetCents
+            pitchOffsetCents: waveformPitchOffsetCents,
+            pitchClassOffsetCents: pitchClassOffset(for: midiNote)
         )
     }
 
@@ -521,6 +553,11 @@ final class SynthEngine {
         for note in notesToStop {
             sampler.stopNote(note, onChannel: 0)
         }
+    }
+
+    private func pitchClassOffset(for midiNote: Int) -> Float {
+        let normalized = ((midiNote % 12) + 12) % 12
+        return waveformPitchClassOffsets[normalized]
     }
 }
 

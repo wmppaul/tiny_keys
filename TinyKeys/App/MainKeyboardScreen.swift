@@ -27,27 +27,46 @@ struct MainKeyboardScreen: View {
 
                 VStack {
                     HStack(alignment: .top) {
-                        if viewModel.hasPitchOffset {
-                            PitchOffsetOverlay(
-                                centsText: viewModel.pitchOffsetDisplayText,
-                                tuningText: viewModel.tuningStandardDisplayText
-                            )
-                            .padding(.top, 10)
-                            .padding(.leading, 10)
+                        VStack(alignment: .leading, spacing: 8) {
+                            if viewModel.shouldShowTuningOverlay {
+                                Button {
+                                    viewModel.presentTuningSettings()
+                                } label: {
+                                    SimpleBlueOverlay(
+                                        title: "Tuning",
+                                        detail: viewModel.tuningSummaryText
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            if viewModel.hasPitchOffset {
+                                Button {
+                                    viewModel.presentSettings()
+                                } label: {
+                                    PitchOffsetOverlay(
+                                        centsText: viewModel.pitchOffsetDisplayText,
+                                        tuningText: viewModel.tuningStandardDisplayText
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
+                        .padding(.top, 10)
+                        .padding(.leading, 10)
 
                         if viewModel.hasLatchedDrones {
                             ClearDronesButton {
                                 viewModel.clearDrones()
                             }
-                            .padding(.top, viewModel.hasPitchOffset ? 0 : 10)
+                            .padding(.top, (viewModel.hasPitchOffset || viewModel.shouldShowTuningOverlay) ? 0 : 10)
                             .padding(.leading, 10)
                         }
 
                         Spacer()
 
                         Button {
-                            viewModel.isSettingsPresented = true
+                            viewModel.presentSettings()
                         } label: {
                             Image(systemName: "gearshape.fill")
                                 .font(.system(size: 17, weight: .semibold))
@@ -75,7 +94,9 @@ struct MainKeyboardScreen: View {
             }
             .allowsHitTesting(false)
         )
-        .sheet(isPresented: $viewModel.isSettingsPresented) {
+        .sheet(isPresented: $viewModel.isSettingsPresented, onDismiss: {
+            viewModel.updateSettingsNavigationPath([])
+        }) {
             SettingsSheetView(viewModel: viewModel)
         }
     }
@@ -107,7 +128,32 @@ private struct PitchOffsetOverlay: View {
                 .stroke(settingsAccent.opacity(0.85), lineWidth: 1.1)
         )
         .shadow(color: settingsAccent.opacity(0.08), radius: 8, y: 2)
-        .allowsHitTesting(false)
+    }
+}
+
+private struct SimpleBlueOverlay: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .opacity(0.85)
+
+            Text(detail)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+        }
+        .foregroundStyle(settingsAccent)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemBackground).opacity(0.95), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(settingsAccent.opacity(0.85), lineWidth: 1.1)
+        )
+        .shadow(color: settingsAccent.opacity(0.08), radius: 8, y: 2)
     }
 }
 

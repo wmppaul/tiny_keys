@@ -12,15 +12,19 @@ final class TinyKeysViewModel: ObservableObject {
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
     @Published private(set) var pitchOffsetCents: Double = 0
+    @Published private(set) var tuningSelection: TuningSelection
     @Published private(set) var isDroneModeEnabled: Bool
     @Published private(set) var keyboardOrientation: KeyboardOrientationMode
     @Published private(set) var latchedDroneNotes: [Int] = []
+    @Published private(set) var settingsNavigationPath: [SettingsNavigationDestination] = []
     @Published var isSettingsPresented = false
 
     private let synthEngine: SynthEngine
     private let defaults = UserDefaults.standard
     private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
     private let droneModeEnabledKey = "tinykeys.droneModeEnabled"
+    private let temperamentKey = "tinykeys.temperament"
+    private let tuningKeyCenterKey = "tinykeys.tuningKeyCenter"
     private var hasStoredKeyboardOrientation = false
     @Published private(set) var clearDronesGeneration = 0
 
@@ -28,6 +32,12 @@ final class TinyKeysViewModel: ObservableObject {
         let synthEngine = SynthEngine()
         self.synthEngine = synthEngine
         self.visibleWhiteStart = keyboardLayout.defaultVisibleStart(for: .oneAndHalf)
+        let storedTemperament = defaults.string(forKey: temperamentKey).flatMap(TemperamentPreset.init(rawValue:)) ?? .equal
+        let storedKeyCenter = defaults.object(forKey: tuningKeyCenterKey)
+            .flatMap { $0 as? Int }
+            .flatMap(PitchClass.init(rawValue:)) ?? .c
+        self.tuningSelection = TuningSelection(temperament: storedTemperament, keyCenter: storedKeyCenter)
+        self.selectedSound = storedTemperament.supportsPiano ? .piano : .sine
         self.isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
         if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
             self.keyboardOrientation = storedOrientation
@@ -46,6 +56,7 @@ final class TinyKeysViewModel: ObservableObject {
         synthEngine.setVolume(Float(volume))
         synthEngine.setPreset(selectedSound)
         synthEngine.setPitchOffsetCents(0)
+        synthEngine.setPitchClassOffsets(TuningEngine(selection: tuningSelection).pitchClassOffsetsCents())
     }
 
     func activateAudioIfNeeded() {
@@ -85,8 +96,14 @@ final class TinyKeysViewModel: ObservableObject {
     }
 
     func updateSound(_ sound: SoundPreset) {
-        selectedSound = sound
-        synthEngine.setPreset(sound)
+        let resolvedSound = sound == .piano && !isPianoAvailableForCurrentTuning ? .sine : sound
+        guard selectedSound != resolvedSound else {
+            return
+        }
+
+        selectedSound = resolvedSound
+        synthEngine.setPreset(resolvedSound)
+        clearDrones()
     }
 
     func updatePitchOffsetCents(_ cents: Double) {
@@ -110,6 +127,44 @@ final class TinyKeysViewModel: ObservableObject {
 
         isDroneModeEnabled = isEnabled
         defaults.set(isEnabled, forKey: droneModeEnabledKey)
+    }
+
+    func presentSettings() {
+        settingsNavigationPath = []
+        isSettingsPresented = true
+    }
+
+    func presentTuningSettings() {
+        settingsNavigationPath = [.tuning]
+        isSettingsPresented = true
+    }
+
+    func dismissSettings() {
+        isSettingsPresented = false
+    }
+
+    func updateSettingsNavigationPath(_ path: [SettingsNavigationDestination]) {
+        settingsNavigationPath = path
+    }
+
+    func updateTemperament(_ temperament: TemperamentPreset) {
+        guard tuningSelection.temperament != temperament else {
+            return
+        }
+
+        tuningSelection.temperament = temperament
+        defaults.set(temperament.rawValue, forKey: temperamentKey)
+        applyTuningSelection()
+    }
+
+    func updateTuningKeyCenter(_ keyCenter: PitchClass) {
+        guard tuningSelection.keyCenter != keyCenter else {
+            return
+        }
+
+        tuningSelection.keyCenter = keyCenter
+        defaults.set(keyCenter.rawValue, forKey: tuningKeyCenterKey)
+        applyTuningSelection()
     }
 
     func updateLatchedDroneNotes(_ midiNotes: [Int]) {
@@ -166,5 +221,38 @@ final class TinyKeysViewModel: ObservableObject {
 
     var hasLatchedDrones: Bool {
         !latchedDroneNotes.isEmpty
+    }
+
+    var hasNonEqualTemperament: Bool {
+        tuningSelection.hasUnequalTemperament
+    }
+
+    var isPianoAvailableForCurrentTuning: Bool {
+        tuningSelection.supportsPiano
+    }
+
+    var availableSoundPresets: [SoundPreset] {
+        if isPianoAvailableForCurrentTuning {
+            return SoundPreset.allCases
+        }
+
+        return SoundPreset.allCases.filter { $0 != .piano }
+    }
+
+    var tuningSummaryText: String {
+        tuningSelection.title
+    }
+
+    var shouldShowTuningOverlay: Bool {
+        hasNonEqualTemperament
+    }
+
+    private func applyTuningSelection() {
+        let offsets = TuningEngine(selection: tuningSelection).pitchClassOffsetsCents()
+        synthEngine.setPitchClassOffsets(offsets)
+
+        if !isPianoAvailableForCurrentTuning, selectedSound == .piano {
+            updateSound(.sine)
+        }
     }
 }

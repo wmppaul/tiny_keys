@@ -30,6 +30,9 @@
 		A00000000000000000000054 /* OrientationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000038 /* OrientationController.swift */; };
 		A00000000000000000000055 /* UprightPianoKW-small-20190703.sf2 in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000039 /* UprightPianoKW-small-20190703.sf2 */; };
 		A00000000000000000000056 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000057 /* Assets.xcassets */; };
+		A00000000000000000000058 /* TuningEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000005B /* TuningEngine.swift */; };
+		A00000000000000000000059 /* Tuning.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000005C /* Tuning.swift */; };
+		A0000000000000000000005A /* TuningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000005D /* TuningSettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +62,9 @@
 		A00000000000000000000038 /* OrientationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationController.swift; sourceTree = "<group>"; };
 		A00000000000000000000039 /* UprightPianoKW-small-20190703.sf2 */ = {isa = PBXFileReference; lastKnownFileType = file; path = "UprightPianoKW-small-20190703.sf2"; sourceTree = "<group>"; };
 		A00000000000000000000057 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A0000000000000000000005B /* TuningEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuningEngine.swift; sourceTree = "<group>"; };
+		A0000000000000000000005C /* Tuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tuning.swift; sourceTree = "<group>"; };
+		A0000000000000000000005D /* TuningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuningSettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -121,6 +127,7 @@
 			children = (
 				A00000000000000000000025 /* AudioSessionManager.swift */,
 				A00000000000000000000026 /* SynthEngine.swift */,
+				A0000000000000000000005B /* TuningEngine.swift */,
 			);
 			path = Audio;
 			sourceTree = "<group>";
@@ -139,6 +146,7 @@
 			isa = PBXGroup;
 			children = (
 				A0000000000000000000002A /* SettingsSheetView.swift */,
+				A0000000000000000000005D /* TuningSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -147,6 +155,7 @@
 			isa = PBXGroup;
 			children = (
 				A0000000000000000000002B /* TinyKeysSettings.swift */,
+				A0000000000000000000005C /* Tuning.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -275,6 +284,9 @@
 				A00000000000000000000049 /* SettingsSheetView.swift in Sources */,
 				A0000000000000000000004A /* TinyKeysSettings.swift in Sources */,
 				A00000000000000000000054 /* OrientationController.swift in Sources */,
+				A00000000000000000000058 /* TuningEngine.swift in Sources */,
+				A00000000000000000000059 /* Tuning.swift in Sources */,
+				A0000000000000000000005A /* TuningSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

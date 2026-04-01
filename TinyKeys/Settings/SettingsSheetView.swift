@@ -5,7 +5,7 @@ struct SettingsSheetView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: settingsPathBinding) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -54,6 +54,29 @@ struct SettingsSheetView: View {
 
                         Slider(value: volumeBinding, in: 0...1)
                     }
+
+                    NavigationLink(value: SettingsNavigationDestination.tuning) {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Tuning")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Text(viewModel.tuningSummaryText)
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(14)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
 
                     VStack(alignment: .leading, spacing: 10) {
                         Toggle(isOn: droneModeBinding) {
@@ -106,11 +129,17 @@ struct SettingsSheetView: View {
                             .foregroundStyle(.secondary)
 
                         Picker("Sound", selection: soundBinding) {
-                            ForEach(SoundPreset.allCases) { preset in
+                            ForEach(viewModel.availableSoundPresets) { preset in
                                 Text(preset.rawValue).tag(preset)
                             }
                         }
                         .pickerStyle(.segmented)
+
+                        if !viewModel.isPianoAvailableForCurrentTuning {
+                            Text("Piano is available only in Equal temperament during this phase.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(20)
@@ -124,8 +153,21 @@ struct SettingsSheetView: View {
                     }
                 }
             }
+            .navigationDestination(for: SettingsNavigationDestination.self) { destination in
+                switch destination {
+                case .tuning:
+                    TuningSettingsView(viewModel: viewModel)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var settingsPathBinding: Binding<[SettingsNavigationDestination]> {
+        Binding(
+            get: { viewModel.settingsNavigationPath },
+            set: { viewModel.updateSettingsNavigationPath($0) }
+        )
     }
 
     private var visibleSpanBinding: Binding<VisibleKeySpan> {
@@ -144,7 +186,13 @@ struct SettingsSheetView: View {
 
     private var soundBinding: Binding<SoundPreset> {
         Binding(
-            get: { viewModel.selectedSound },
+            get: {
+                if viewModel.availableSoundPresets.contains(viewModel.selectedSound) {
+                    return viewModel.selectedSound
+                }
+
+                return viewModel.availableSoundPresets.first ?? .sine
+            },
             set: { viewModel.updateSound($0) }
         )
     }

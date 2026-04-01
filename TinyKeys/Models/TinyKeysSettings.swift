@@ -31,6 +31,10 @@ enum SoundPreset: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum SettingsNavigationDestination: Hashable {
+    case tuning
+}
+
 enum AppOrientationMode: String, CaseIterable, Identifiable {
     case portrait
     case landscape
