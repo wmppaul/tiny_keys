@@ -56,6 +56,20 @@ struct SettingsSheetView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
+                        Toggle(isOn: droneModeBinding) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Drone Mode")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Text("Swipe along a key to latch or unlatch a sustained drone.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Pitch Correction")
@@ -153,6 +167,13 @@ struct SettingsSheetView: View {
         Binding(
             get: { viewModel.keyboardOrientation },
             set: { viewModel.updateKeyboardOrientation($0) }
+        )
+    }
+
+    private var droneModeBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.isDroneModeEnabled },
+            set: { viewModel.updateDroneModeEnabled($0) }
         )
     }
 }

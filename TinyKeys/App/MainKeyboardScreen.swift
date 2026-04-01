@@ -15,8 +15,11 @@ struct MainKeyboardScreen: View {
                         set: { viewModel.updateVisibleStart($0) }
                     ),
                     visibleWhiteCount: viewModel.visibleSpan.whiteKeyCount,
+                    droneModeEnabled: viewModel.isDroneModeEnabled,
+                    clearDronesGeneration: viewModel.clearDronesGeneration,
                     keyboardOrientation: viewModel.keyboardOrientation,
                     interfaceOrientation: orientationController.currentInterfaceOrientation,
+                    latchedNotesChanged: viewModel.updateLatchedDroneNotes(_:),
                     noteOn: viewModel.noteOn(token:midiNote:),
                     noteOff: viewModel.noteOff(token:)
                 )
@@ -30,6 +33,14 @@ struct MainKeyboardScreen: View {
                                 tuningText: viewModel.tuningStandardDisplayText
                             )
                             .padding(.top, 10)
+                            .padding(.leading, 10)
+                        }
+
+                        if viewModel.hasLatchedDrones {
+                            ClearDronesButton {
+                                viewModel.clearDrones()
+                            }
+                            .padding(.top, viewModel.hasPitchOffset ? 0 : 10)
                             .padding(.leading, 10)
                         }
 
@@ -100,12 +111,35 @@ private struct PitchOffsetOverlay: View {
     }
 }
 
+private struct ClearDronesButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text("Clear Drones")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .foregroundStyle(settingsAccent)
+                .background(Color(uiColor: .secondarySystemBackground).opacity(0.95), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(settingsAccent.opacity(0.85), lineWidth: 1.1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct KeyboardSurfaceView: View {
     let layout: PianoKeyboardLayout
     @Binding var visibleWhiteStart: CGFloat
     let visibleWhiteCount: CGFloat
+    let droneModeEnabled: Bool
+    let clearDronesGeneration: Int
     let keyboardOrientation: KeyboardOrientationMode
     let interfaceOrientation: UIInterfaceOrientation
+    let latchedNotesChanged: ([Int]) -> Void
     let noteOn: (Int, Int) -> Void
     let noteOff: (Int) -> Void
 
@@ -131,6 +165,9 @@ private struct KeyboardSurfaceView: View {
                     layout: layout,
                     visibleWhiteStart: visibleWhiteStart,
                     visibleWhiteCount: visibleWhiteCount,
+                    droneModeEnabled: droneModeEnabled,
+                    clearDronesGeneration: clearDronesGeneration,
+                    latchedNotesChanged: latchedNotesChanged,
                     noteOn: noteOn,
                     noteOff: noteOff
                 )

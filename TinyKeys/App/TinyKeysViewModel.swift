@@ -12,18 +12,23 @@ final class TinyKeysViewModel: ObservableObject {
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
     @Published private(set) var pitchOffsetCents: Double = 0
+    @Published private(set) var isDroneModeEnabled: Bool
     @Published private(set) var keyboardOrientation: KeyboardOrientationMode
+    @Published private(set) var latchedDroneNotes: [Int] = []
     @Published var isSettingsPresented = false
 
     private let synthEngine: SynthEngine
     private let defaults = UserDefaults.standard
     private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
+    private let droneModeEnabledKey = "tinykeys.droneModeEnabled"
     private var hasStoredKeyboardOrientation = false
+    @Published private(set) var clearDronesGeneration = 0
 
     init() {
         let synthEngine = SynthEngine()
         self.synthEngine = synthEngine
         self.visibleWhiteStart = keyboardLayout.defaultVisibleStart(for: .oneAndHalf)
+        self.isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
         if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
             self.keyboardOrientation = storedOrientation
             self.hasStoredKeyboardOrientation = true
@@ -59,6 +64,7 @@ final class TinyKeysViewModel: ObservableObject {
 
     func stopAllNotes() {
         synthEngine.stopAllNotes()
+        clearDrones()
     }
 
     func updateVisibleStart(_ start: CGFloat) {
@@ -97,6 +103,29 @@ final class TinyKeysViewModel: ObservableObject {
         updatePitchOffsetCents(0)
     }
 
+    func updateDroneModeEnabled(_ isEnabled: Bool) {
+        guard isDroneModeEnabled != isEnabled else {
+            return
+        }
+
+        isDroneModeEnabled = isEnabled
+        defaults.set(isEnabled, forKey: droneModeEnabledKey)
+    }
+
+    func updateLatchedDroneNotes(_ midiNotes: [Int]) {
+        let sortedNotes = midiNotes.sorted()
+        guard latchedDroneNotes != sortedNotes else {
+            return
+        }
+
+        latchedDroneNotes = sortedNotes
+    }
+
+    func clearDrones() {
+        clearDronesGeneration += 1
+        latchedDroneNotes = []
+    }
+
     func updateAppOrientation(_ orientation: AppOrientationMode) {
         orientationController.updateAppOrientation(orientation)
     }
@@ -133,5 +162,9 @@ final class TinyKeysViewModel: ObservableObject {
 
     var hasPitchOffset: Bool {
         abs(pitchOffsetCents) >= 0.5
+    }
+
+    var hasLatchedDrones: Bool {
+        !latchedDroneNotes.isEmpty
     }
 }

@@ -42,6 +42,10 @@ The keyboard itself is not a scroll view. Dragging on keys plays notes. Horizont
 
 The visible keyboard width can be set with a `Visible Octaves` control at 1, 1.5, or 2 octaves. The default is 1.5 octaves.
 
+## Interaction notes
+
+The swipe-to-latch drone interaction has a few reusable touch-handling ideas around overlapping hit targets, glissando coexistence, and post-threshold gesture lockout. Those notes are documented separately in [`docs/swipe-ux.md`](./docs/swipe-ux.md).
+
 ## Orientation controls
 
 Tiny Keys now separates the system app orientation from the keyboard’s own layout direction:
