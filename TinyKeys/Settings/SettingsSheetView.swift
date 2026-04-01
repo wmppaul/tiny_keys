@@ -95,11 +95,66 @@ struct SettingsSheetView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .firstTextBaseline, spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Pitch Correction")
+                                Text("Concert A")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
 
-                                Text("\(viewModel.pitchOffsetDisplayText) (\(viewModel.tuningStandardDisplayText))")
+                                Text("Set the base tuning standard from A392.0 to A460.0.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                viewModel.resetConcertAFrequency()
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(width: 28, height: 28)
+                                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!viewModel.hasConcertAFrequencyOffset)
+                            .opacity(viewModel.hasConcertAFrequencyOffset ? 1 : 0.45)
+                            .accessibilityLabel("Reset concert A")
+                        }
+
+                        HStack(spacing: 10) {
+                            Text("A")
+                                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            TextField(
+                                "440.0",
+                                value: concertAFrequencyBinding,
+                                format: .number.precision(.fractionLength(1))
+                            )
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .frame(width: 92)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+
+                            Text("Hz")
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Cents Shift")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                Text(viewModel.pitchOffsetDisplayText)
                                     .font(.footnote)
                                     .monospacedDigit()
                             }
@@ -201,6 +256,13 @@ struct SettingsSheetView: View {
         Binding(
             get: { viewModel.pitchOffsetCents },
             set: { viewModel.updatePitchOffsetCents($0) }
+        )
+    }
+
+    private var concertAFrequencyBinding: Binding<Double> {
+        Binding(
+            get: { viewModel.concertAFrequency },
+            set: { viewModel.updateConcertAFrequency($0) }
         )
     }
 

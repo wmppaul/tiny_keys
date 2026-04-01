@@ -11,6 +11,7 @@ final class TinyKeysViewModel: ObservableObject {
     @Published private(set) var visibleWhiteStart: CGFloat
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
+    @Published private(set) var concertAFrequency: Double = 440
     @Published private(set) var pitchOffsetCents: Double = 0
     @Published private(set) var tuningSelection: TuningSelection
     @Published private(set) var savedCustomTunings: [SavedCustomTuning] = []
@@ -25,6 +26,7 @@ final class TinyKeysViewModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
     private let droneModeEnabledKey = "tinykeys.droneModeEnabled"
+    private let concertAFrequencyKey = "tinykeys.concertAFrequency"
     private let tuningSelectionDataKey = "tinykeys.tuningSelectionData"
     private let temperamentKey = "tinykeys.temperament"
     private let tuningKeyCenterKey = "tinykeys.tuningKeyCenter"
@@ -59,6 +61,7 @@ final class TinyKeysViewModel: ObservableObject {
 
         let selectedSound: SoundPreset = initialTuningSelection.supportsPiano ? .piano : .sine
         let isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
+        let concertAFrequency = Self.clampedConcertAFrequency(defaults.object(forKey: concertAFrequencyKey) as? Double ?? 440)
         let initialKeyboardOrientation: KeyboardOrientationMode
 
         if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
@@ -78,6 +81,7 @@ final class TinyKeysViewModel: ObservableObject {
         self.savedCustomTunings = savedCustomTunings
         self.tuningSelection = initialTuningSelection
         self.selectedSound = selectedSound
+        self.concertAFrequency = concertAFrequency
         self.isDroneModeEnabled = isDroneModeEnabled
         self.keyboardOrientation = initialKeyboardOrientation
         self.hasStoredKeyboardOrientation = true
@@ -86,7 +90,7 @@ final class TinyKeysViewModel: ObservableObject {
         synthEngine.start()
         synthEngine.setVolume(Float(volume))
         synthEngine.setPreset(selectedSound)
-        synthEngine.setPitchOffsetCents(0)
+        synthEngine.setGlobalTuningCents(Float(Self.totalGlobalTuningCents(concertAFrequency: concertAFrequency, pitchOffsetCents: 0)))
         synthEngine.setPitchClassOffsets(TuningEngine(selection: initialTuningSelection).pitchClassOffsetsCents())
         persistTuningSelection()
     }
@@ -138,6 +142,21 @@ final class TinyKeysViewModel: ObservableObject {
         clearDrones()
     }
 
+    func updateConcertAFrequency(_ frequency: Double) {
+        let clamped = Self.clampedConcertAFrequency(frequency)
+        guard concertAFrequency != clamped else {
+            return
+        }
+
+        concertAFrequency = clamped
+        defaults.set(clamped, forKey: concertAFrequencyKey)
+        applyGlobalTuning()
+    }
+
+    func resetConcertAFrequency() {
+        updateConcertAFrequency(440)
+    }
+
     func updatePitchOffsetCents(_ cents: Double) {
         let clamped = min(max(cents, -50), 50).rounded()
         guard pitchOffsetCents != clamped else {
@@ -145,7 +164,7 @@ final class TinyKeysViewModel: ObservableObject {
         }
 
         pitchOffsetCents = clamped
-        synthEngine.setPitchOffsetCents(Float(clamped))
+        applyGlobalTuning()
     }
 
     func resetPitchOffset() {
@@ -401,13 +420,16 @@ final class TinyKeysViewModel: ObservableObject {
         }
     }
 
-    var tuningStandardDisplayText: String {
-        let frequency = 440 * pow(2, pitchOffsetCents / 1200)
-        return String(format: "A%.1f", frequency)
+    var concertAFrequencyDisplayText: String {
+        String(format: "A%.1f", concertAFrequency)
     }
 
     var hasPitchOffset: Bool {
         abs(pitchOffsetCents) >= 0.5
+    }
+
+    var hasConcertAFrequencyOffset: Bool {
+        abs(concertAFrequency - 440) >= 0.05
     }
 
     var hasLatchedDrones: Bool {
@@ -500,6 +522,7 @@ final class TinyKeysViewModel: ObservableObject {
     }
 
     private func applyTuningSelection() {
+        clearDronesForRetune()
         let offsets = TuningEngine(selection: tuningSelection).pitchClassOffsetsCents()
         synthEngine.setPitchClassOffsets(offsets)
 
@@ -510,6 +533,23 @@ final class TinyKeysViewModel: ObservableObject {
         defaults.set(tuningSelection.temperament.rawValue, forKey: temperamentKey)
         defaults.set(tuningSelection.keyCenter.rawValue, forKey: tuningKeyCenterKey)
         persistTuningSelection()
+    }
+
+    private func applyGlobalTuning() {
+        clearDronesForRetune()
+        let totalCents = Self.totalGlobalTuningCents(
+            concertAFrequency: concertAFrequency,
+            pitchOffsetCents: pitchOffsetCents
+        )
+        synthEngine.setGlobalTuningCents(Float(totalCents))
+    }
+
+    private func clearDronesForRetune() {
+        guard hasLatchedDrones else {
+            return
+        }
+
+        clearDrones()
     }
 
     private func persistSavedCustomTunings() {
@@ -532,5 +572,14 @@ final class TinyKeysViewModel: ObservableObject {
         }
 
         return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
+
+    private static func clampedConcertAFrequency(_ frequency: Double) -> Double {
+        let clamped = min(max(frequency, 392), 460)
+        return (clamped * 10).rounded() / 10
+    }
+
+    private static func totalGlobalTuningCents(concertAFrequency: Double, pitchOffsetCents: Double) -> Double {
+        (1200 * log2(concertAFrequency / 440)) + pitchOffsetCents
     }
 }

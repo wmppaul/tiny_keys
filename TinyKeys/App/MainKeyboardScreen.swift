@@ -40,13 +40,25 @@ struct MainKeyboardScreen: View {
                                 .buttonStyle(.plain)
                             }
 
+                            if viewModel.hasConcertAFrequencyOffset {
+                                Button {
+                                    viewModel.presentSettings()
+                                } label: {
+                                    SimpleBlueOverlay(
+                                        title: "Concert A",
+                                        detail: viewModel.concertAFrequencyDisplayText
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+
                             if viewModel.hasPitchOffset {
                                 Button {
                                     viewModel.presentSettings()
                                 } label: {
-                                    PitchOffsetOverlay(
-                                        centsText: viewModel.pitchOffsetDisplayText,
-                                        tuningText: viewModel.tuningStandardDisplayText
+                                    SimpleBlueOverlay(
+                                        title: "Cents",
+                                        detail: viewModel.pitchOffsetDisplayText
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -59,7 +71,7 @@ struct MainKeyboardScreen: View {
                             ClearDronesButton {
                                 viewModel.clearDrones()
                             }
-                            .padding(.top, (viewModel.hasPitchOffset || viewModel.shouldShowTuningOverlay) ? 0 : 10)
+                            .padding(.top, (viewModel.hasPitchOffset || viewModel.hasConcertAFrequencyOffset || viewModel.shouldShowTuningOverlay) ? 0 : 10)
                             .padding(.leading, 10)
                         }
 
@@ -103,33 +115,6 @@ struct MainKeyboardScreen: View {
 }
 
 private let settingsAccent = Color(red: 0.137, green: 0.431, blue: 0.773)
-
-private struct PitchOffsetOverlay: View {
-    let centsText: String
-    let tuningText: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(centsText)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-
-            Text(tuningText)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .monospacedDigit()
-                .opacity(0.85)
-        }
-        .foregroundStyle(settingsAccent)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(uiColor: .secondarySystemBackground).opacity(0.95), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(settingsAccent.opacity(0.85), lineWidth: 1.1)
-        )
-        .shadow(color: settingsAccent.opacity(0.08), radius: 8, y: 2)
-    }
-}
 
 private struct SimpleBlueOverlay: View {
     let title: String

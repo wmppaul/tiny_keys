@@ -7,7 +7,7 @@ final class SynthEngine {
         case noteOn
         case noteOff
         case stopAllWaveforms
-        case updatePitchOffset
+        case updateGlobalTuning
         case updatePitchClassOffsets
     }
 
@@ -17,7 +17,7 @@ final class SynthEngine {
         var midiNote: Int = 0
         var velocity: Float = 0
         var preset: SoundPreset = .sine
-        var pitchOffsetCents: Float = 0
+        var globalTuningCents: Float = 0
     }
 
     private enum VoiceStage {
@@ -60,7 +60,7 @@ final class SynthEngine {
             velocity: Float,
             sampleRate: Float,
             preset: SoundPreset,
-            pitchOffsetCents: Float,
+            globalTuningCents: Float,
             pitchClassOffsetCents: Float
         ) {
             self.token = token
@@ -80,11 +80,11 @@ final class SynthEngine {
             self.phaseIncrement = Self.phaseIncrement(
                 midiNote: midiNote,
                 sampleRate: sampleRate,
-                pitchOffsetCents: pitchOffsetCents + pitchClassOffsetCents
+                pitchOffsetCents: globalTuningCents + pitchClassOffsetCents
             )
         }
 
-        mutating func retune(sampleRate: Float, pitchOffsetCents: Float, pitchClassOffsetCents: Float) {
+        mutating func retune(sampleRate: Float, globalTuningCents: Float, pitchClassOffsetCents: Float) {
             guard isActive else {
                 return
             }
@@ -92,7 +92,7 @@ final class SynthEngine {
             phaseIncrement = Self.phaseIncrement(
                 midiNote: midiNote,
                 sampleRate: sampleRate,
-                pitchOffsetCents: pitchOffsetCents + pitchClassOffsetCents
+                pitchOffsetCents: globalTuningCents + pitchClassOffsetCents
             )
         }
 
@@ -179,7 +179,7 @@ final class SynthEngine {
     private var activePianoTokens: [Int: UInt8] = [:]
     private var activePianoNoteCounts: [UInt8: Int] = [:]
     private var currentPreset: SoundPreset = .piano
-    private var waveformPitchOffsetCents: Float = 0
+    private var waveformGlobalTuningCents: Float = 0
     private var waveformPitchClassOffsets = Array(repeating: Float(0), count: 12)
     private var pendingWaveformPitchClassOffsets = Array(repeating: Float(0), count: 12)
     private var renderSampleRate: Float = 48_000
@@ -286,10 +286,10 @@ final class SynthEngine {
         enqueue(Event(kind: .stopAllWaveforms))
     }
 
-    func setPitchOffsetCents(_ cents: Float) {
-        let clamped = max(-50, min(cents, 50))
+    func setGlobalTuningCents(_ cents: Float) {
+        let clamped = max(-2400, min(cents, 2400))
         sampler.globalTuning = clamped
-        enqueue(Event(kind: .updatePitchOffset, pitchOffsetCents: clamped))
+        enqueue(Event(kind: .updateGlobalTuning, globalTuningCents: clamped))
     }
 
     func setPitchClassOffsets(_ offsets: [Float]) {
@@ -408,12 +408,12 @@ final class SynthEngine {
                 for index in voices.indices {
                     voices[index].stopImmediately()
                 }
-            case .updatePitchOffset:
-                waveformPitchOffsetCents = event.pitchOffsetCents
+            case .updateGlobalTuning:
+                waveformGlobalTuningCents = event.globalTuningCents
                 for index in voices.indices {
                     voices[index].retune(
                         sampleRate: renderSampleRate,
-                        pitchOffsetCents: waveformPitchOffsetCents,
+                        globalTuningCents: waveformGlobalTuningCents,
                         pitchClassOffsetCents: pitchClassOffset(for: voices[index].midiNote)
                     )
                 }
@@ -424,7 +424,7 @@ final class SynthEngine {
                 for index in voices.indices {
                     voices[index].retune(
                         sampleRate: renderSampleRate,
-                        pitchOffsetCents: waveformPitchOffsetCents,
+                        globalTuningCents: waveformGlobalTuningCents,
                         pitchClassOffsetCents: pitchClassOffset(for: voices[index].midiNote)
                     )
                 }
@@ -447,7 +447,7 @@ final class SynthEngine {
             velocity: velocity,
             sampleRate: renderSampleRate,
             preset: preset,
-            pitchOffsetCents: waveformPitchOffsetCents,
+            globalTuningCents: waveformGlobalTuningCents,
             pitchClassOffsetCents: pitchClassOffset(for: midiNote)
         )
     }
