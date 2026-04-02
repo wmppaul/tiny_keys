@@ -2,13 +2,30 @@ import CoreGraphics
 import Foundation
 import UIKit
 
-enum VisibleKeySpan: CGFloat, CaseIterable, Identifiable {
-    case one = 7.0
-    case oneAndHalf = 10.5
-    case two = 14.0
+enum VisibleKeySpan: String, CaseIterable, Identifiable {
+    case one
+    case oneAndHalf
+    case two
+    case zoom
 
-    var id: CGFloat { rawValue }
-    var whiteKeyCount: CGFloat { rawValue }
+    var id: String { rawValue }
+
+    var fixedWhiteKeyCount: CGFloat? {
+        switch self {
+        case .one:
+            return 7.0
+        case .oneAndHalf:
+            return 10.5
+        case .two:
+            return 14.0
+        case .zoom:
+            return nil
+        }
+    }
+
+    var defaultWhiteKeyCount: CGFloat {
+        fixedWhiteKeyCount ?? 10.5
+    }
 
     var title: String {
         switch self {
@@ -18,6 +35,8 @@ enum VisibleKeySpan: CGFloat, CaseIterable, Identifiable {
             return "1.5"
         case .two:
             return "2"
+        case .zoom:
+            return "Zoom"
         }
     }
 }
@@ -81,7 +100,7 @@ enum KeyboardOrientationMode: String, CaseIterable, Identifiable {
         case .landscapeLeft:
             return "Left"
         case .portrait:
-            return "Portrait"
+            return "Down"
         case .landscapeRight:
             return "Right"
         }
@@ -112,11 +131,8 @@ enum KeyboardOrientationMode: String, CaseIterable, Identifiable {
     }
 
     func relativeQuarterTurns(from interfaceOrientation: UIInterfaceOrientation) -> Int {
-        guard let currentQuarterTurns = interfaceOrientation.quarterTurnsClockwiseFromPortrait else {
-            return 0
-        }
-
-        var relativeQuarterTurns = quarterTurnsClockwiseFromPortrait - currentQuarterTurns
+        _ = interfaceOrientation
+        var relativeQuarterTurns = quarterTurnsClockwiseFromPortrait
 
         while relativeQuarterTurns > 2 {
             relativeQuarterTurns -= 4

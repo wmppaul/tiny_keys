@@ -109,8 +109,12 @@ struct PianoKeyboardLayout {
     }
 
     func defaultVisibleStart(for span: VisibleKeySpan) -> CGFloat {
+        defaultVisibleStart(visibleWhiteCount: span.defaultWhiteKeyCount)
+    }
+
+    func defaultVisibleStart(visibleWhiteCount: CGFloat) -> CGFloat {
         let middleCWhiteIndex = whitePosition(for: 60) ?? 7
-        return clampVisibleStart(middleCWhiteIndex, visibleWhiteCount: span.whiteKeyCount)
+        return clampVisibleStart(middleCWhiteIndex, visibleWhiteCount: visibleWhiteCount)
     }
 
     func clampVisibleStart(_ proposedStart: CGFloat, visibleWhiteCount: CGFloat) -> CGFloat {

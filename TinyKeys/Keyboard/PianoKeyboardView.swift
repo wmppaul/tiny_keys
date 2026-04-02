@@ -57,6 +57,7 @@ final class PianoKeyboardUIView: UIView {
         var swipeDirection: SwipeDirection? = nil
         var controlledLatchedMIDINote: Int? = nil
         var gestureLocked = false
+        var hasTraversedOtherNote = false
     }
 
     private struct SwipeVisualization {
@@ -78,7 +79,7 @@ final class PianoKeyboardUIView: UIView {
         }
     }
 
-    var visibleWhiteCount: CGFloat = VisibleKeySpan.oneAndHalf.whiteKeyCount {
+    var visibleWhiteCount: CGFloat = VisibleKeySpan.oneAndHalf.defaultWhiteKeyCount {
         didSet {
             if visibleWhiteCount != oldValue {
                 updateFrames()
@@ -282,6 +283,9 @@ final class PianoKeyboardUIView: UIView {
             let hitMIDINote = state.gestureMIDINote ?? midiNote(at: point)
 
             if hitMIDINote != activeMIDINote {
+                if activeMIDINote != nil, hitMIDINote != nil {
+                    state.hasTraversedOtherNote = true
+                }
                 state.swipeProgress = 0
                 state.swipeDirection = nil
 
@@ -493,7 +497,7 @@ final class PianoKeyboardUIView: UIView {
     }
 
     private func isDroneGestureTracking(point: CGPoint, state: TouchState, midiNote: Int) -> Bool {
-        guard state.beganMIDINote == midiNote else {
+        guard state.beganMIDINote == midiNote, !state.hasTraversedOtherNote else {
             return false
         }
 

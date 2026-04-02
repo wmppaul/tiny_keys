@@ -9,6 +9,7 @@ final class TinyKeysViewModel: ObservableObject {
 
     @Published private(set) var visibleSpan: VisibleKeySpan = .oneAndHalf
     @Published private(set) var visibleWhiteStart: CGFloat
+    @Published private(set) var zoomVisibleWhiteCount: CGFloat
     @Published private(set) var volume: Double = 0.8
     @Published private(set) var selectedSound: SoundPreset = .piano
     @Published private(set) var concertAFrequency: Double = 440
@@ -26,7 +27,13 @@ final class TinyKeysViewModel: ObservableObject {
     private let defaults = UserDefaults.standard
     private let keyboardOrientationKey = "tinykeys.keyboardOrientation"
     private let droneModeEnabledKey = "tinykeys.droneModeEnabled"
+    private let visibleSpanKey = "tinykeys.visibleSpan"
+    private let visibleWhiteStartKey = "tinykeys.visibleWhiteStart"
+    private let zoomVisibleWhiteCountKey = "tinykeys.zoomVisibleWhiteCount"
+    private let volumeKey = "tinykeys.volume"
+    private let selectedSoundKey = "tinykeys.selectedSound"
     private let concertAFrequencyKey = "tinykeys.concertAFrequency"
+    private let pitchOffsetCentsKey = "tinykeys.pitchOffsetCents"
     private let tuningSelectionDataKey = "tinykeys.tuningSelectionData"
     private let temperamentKey = "tinykeys.temperament"
     private let tuningKeyCenterKey = "tinykeys.tuningKeyCenter"
@@ -60,8 +67,20 @@ final class TinyKeysViewModel: ObservableObject {
         }
 
         let selectedSound: SoundPreset = initialTuningSelection.supportsPiano ? .piano : .sine
-        let isDroneModeEnabled = defaults.bool(forKey: droneModeEnabledKey)
+        let isDroneModeEnabled = defaults.object(forKey: droneModeEnabledKey) as? Bool ?? true
         let concertAFrequency = Self.clampedConcertAFrequency(defaults.object(forKey: concertAFrequencyKey) as? Double ?? 440)
+        let storedPitchOffsetCents = min(max(defaults.object(forKey: pitchOffsetCentsKey) as? Double ?? 0, -50), 50).rounded()
+        let storedVisibleSpan = defaults.string(forKey: visibleSpanKey).flatMap(VisibleKeySpan.init(rawValue:)) ?? .oneAndHalf
+        let storedZoomVisibleWhiteCount = Self.clampedZoomVisibleWhiteCount(
+            CGFloat(defaults.object(forKey: zoomVisibleWhiteCountKey) as? Double ?? Double(VisibleKeySpan.oneAndHalf.defaultWhiteKeyCount))
+        )
+        let initialVisibleWhiteCount = storedVisibleSpan.fixedWhiteKeyCount ?? storedZoomVisibleWhiteCount
+        let storedVisibleWhiteStart = CGFloat(defaults.object(forKey: visibleWhiteStartKey) as? Double ?? Double(PianoKeyboardLayout().defaultVisibleStart(visibleWhiteCount: initialVisibleWhiteCount)))
+        let clampedVisibleWhiteStart = keyboardLayout.clampVisibleStart(storedVisibleWhiteStart, visibleWhiteCount: initialVisibleWhiteCount)
+        let storedVolume = min(max(defaults.object(forKey: volumeKey) as? Double ?? 0.8, 0), 1)
+        let storedSelectedSound = defaults.string(forKey: selectedSoundKey).flatMap(SoundPreset.init(rawValue:))
+        let resolvedSelectedSound = (storedSelectedSound ?? selectedSound)
+        let initialSelectedSound: SoundPreset = resolvedSelectedSound == .piano && !initialTuningSelection.supportsPiano ? .sine : resolvedSelectedSound
         let initialKeyboardOrientation: KeyboardOrientationMode
 
         if let storedOrientation = defaults.string(forKey: keyboardOrientationKey).flatMap(KeyboardOrientationMode.init(rawValue:)) {
@@ -77,31 +96,33 @@ final class TinyKeysViewModel: ObservableObject {
 
         self.synthEngine = synthEngine
         self.audioSessionManager = audioSessionManager
-        self.visibleWhiteStart = PianoKeyboardLayout().defaultVisibleStart(for: .oneAndHalf)
+        self.visibleSpan = storedVisibleSpan
+        self.visibleWhiteStart = clampedVisibleWhiteStart
+        self.zoomVisibleWhiteCount = storedZoomVisibleWhiteCount
+        self.volume = storedVolume
         self.savedCustomTunings = savedCustomTunings
         self.tuningSelection = initialTuningSelection
-        self.selectedSound = selectedSound
+        self.selectedSound = initialSelectedSound
         self.concertAFrequency = concertAFrequency
+        self.pitchOffsetCents = storedPitchOffsetCents
         self.isDroneModeEnabled = isDroneModeEnabled
         self.keyboardOrientation = initialKeyboardOrientation
         self.hasStoredKeyboardOrientation = true
 
-        audioSessionManager.configureForMixingPlayback()
-        synthEngine.start()
-        synthEngine.setVolume(Float(volume))
-        synthEngine.setPreset(selectedSound)
-        synthEngine.setGlobalTuningCents(Float(Self.totalGlobalTuningCents(concertAFrequency: concertAFrequency, pitchOffsetCents: 0)))
+        synthEngine.setVolume(Float(storedVolume))
+        synthEngine.setPreset(initialSelectedSound)
+        synthEngine.setGlobalTuningCents(Float(Self.totalGlobalTuningCents(concertAFrequency: concertAFrequency, pitchOffsetCents: storedPitchOffsetCents)))
         synthEngine.setPitchClassOffsets(TuningEngine(selection: initialTuningSelection).pitchClassOffsetsCents())
         persistTuningSelection()
     }
 
     func activateAudioIfNeeded() {
-        audioSessionManager.configureForMixingPlayback()
-        synthEngine.ensureRunning()
         orientationController.applyCurrentOrientation()
+        synthEngine.ensureRunning()
     }
 
     func noteOn(token: Int, midiNote: Int) {
+        audioSessionManager.configureForMixingPlayback()
         synthEngine.noteOn(token: token, midiNote: midiNote)
     }
 
@@ -115,20 +136,50 @@ final class TinyKeysViewModel: ObservableObject {
     }
 
     func updateVisibleStart(_ start: CGFloat) {
-        visibleWhiteStart = keyboardLayout.clampVisibleStart(start, visibleWhiteCount: visibleSpan.whiteKeyCount)
+        visibleWhiteStart = keyboardLayout.clampVisibleStart(start, visibleWhiteCount: currentVisibleWhiteCount)
+        defaults.set(Double(visibleWhiteStart), forKey: visibleWhiteStartKey)
     }
 
     func updateVisibleSpan(_ span: VisibleKeySpan) {
-        let oldVisibleCount = visibleSpan.whiteKeyCount
+        let oldVisibleCount = currentVisibleWhiteCount
         let center = visibleWhiteStart + (oldVisibleCount / 2)
+
+        if span == .zoom, visibleSpan != .zoom {
+            zoomVisibleWhiteCount = Self.clampedZoomVisibleWhiteCount(oldVisibleCount)
+            defaults.set(Double(zoomVisibleWhiteCount), forKey: zoomVisibleWhiteCountKey)
+        }
+
         visibleSpan = span
-        let proposedStart = center - (span.whiteKeyCount / 2)
-        visibleWhiteStart = keyboardLayout.clampVisibleStart(proposedStart, visibleWhiteCount: span.whiteKeyCount)
+        let proposedStart = center - (currentVisibleWhiteCount / 2)
+        visibleWhiteStart = keyboardLayout.clampVisibleStart(proposedStart, visibleWhiteCount: currentVisibleWhiteCount)
+        defaults.set(span.rawValue, forKey: visibleSpanKey)
+        defaults.set(Double(visibleWhiteStart), forKey: visibleWhiteStartKey)
+    }
+
+    func updateZoomVisibleWhiteCount(_ visibleWhiteCount: CGFloat) {
+        let clamped = Self.clampedZoomVisibleWhiteCount(visibleWhiteCount)
+        let oldVisibleCount = currentVisibleWhiteCount
+        let center = visibleWhiteStart + (oldVisibleCount / 2)
+
+        guard zoomVisibleWhiteCount != clamped || visibleSpan != .zoom else {
+            return
+        }
+
+        zoomVisibleWhiteCount = clamped
+        if visibleSpan != .zoom {
+            visibleSpan = .zoom
+            defaults.set(VisibleKeySpan.zoom.rawValue, forKey: visibleSpanKey)
+        }
+        let proposedStart = center - (clamped / 2)
+        visibleWhiteStart = keyboardLayout.clampVisibleStart(proposedStart, visibleWhiteCount: clamped)
+        defaults.set(Double(zoomVisibleWhiteCount), forKey: zoomVisibleWhiteCountKey)
+        defaults.set(Double(visibleWhiteStart), forKey: visibleWhiteStartKey)
     }
 
     func updateVolume(_ volume: Double) {
         self.volume = min(max(volume, 0), 1)
         synthEngine.setVolume(Float(self.volume))
+        defaults.set(self.volume, forKey: volumeKey)
     }
 
     func updateSound(_ sound: SoundPreset) {
@@ -140,6 +191,7 @@ final class TinyKeysViewModel: ObservableObject {
         selectedSound = resolvedSound
         synthEngine.setPreset(resolvedSound)
         clearDrones()
+        defaults.set(resolvedSound.rawValue, forKey: selectedSoundKey)
     }
 
     func updateConcertAFrequency(_ frequency: Double) {
@@ -164,6 +216,7 @@ final class TinyKeysViewModel: ObservableObject {
         }
 
         pitchOffsetCents = clamped
+        defaults.set(clamped, forKey: pitchOffsetCentsKey)
         applyGlobalTuning()
     }
 
@@ -392,6 +445,18 @@ final class TinyKeysViewModel: ObservableObject {
     }
 
     func updateAppOrientation(_ orientation: AppOrientationMode) {
+        let defaultKeyboardOrientation: KeyboardOrientationMode = switch orientation {
+        case .portrait:
+            .landscapeRight
+        case .landscape:
+            .portrait
+        }
+
+        if keyboardOrientation != defaultKeyboardOrientation {
+            keyboardOrientation = defaultKeyboardOrientation
+            hasStoredKeyboardOrientation = true
+            defaults.set(defaultKeyboardOrientation.rawValue, forKey: keyboardOrientationKey)
+        }
         orientationController.updateAppOrientation(orientation)
     }
 
@@ -426,6 +491,14 @@ final class TinyKeysViewModel: ObservableObject {
 
     var hasPitchOffset: Bool {
         abs(pitchOffsetCents) >= 0.5
+    }
+
+    var isZoomModeEnabled: Bool {
+        visibleSpan == .zoom
+    }
+
+    var currentVisibleWhiteCount: CGFloat {
+        visibleSpan.fixedWhiteKeyCount ?? zoomVisibleWhiteCount
     }
 
     var hasConcertAFrequencyOffset: Bool {
@@ -574,6 +647,10 @@ final class TinyKeysViewModel: ObservableObject {
         return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
     }
 
+    private static func clampedZoomVisibleWhiteCount(_ visibleWhiteCount: CGFloat) -> CGFloat {
+        min(max(visibleWhiteCount, 5.5), 18.0)
+    }
+
     private static func clampedConcertAFrequency(_ frequency: Double) -> Double {
         let clamped = min(max(frequency, 392), 460)
         return (clamped * 10).rounded() / 10
@@ -581,5 +658,39 @@ final class TinyKeysViewModel: ObservableObject {
 
     private static func totalGlobalTuningCents(concertAFrequency: Double, pitchOffsetCents: Double) -> Double {
         (1200 * log2(concertAFrequency / 440)) + pitchOffsetCents
+    }
+
+    func resetAllSettingsToDefaults() {
+        clearDrones()
+
+        defaults.removeObject(forKey: visibleSpanKey)
+        defaults.removeObject(forKey: visibleWhiteStartKey)
+        defaults.removeObject(forKey: zoomVisibleWhiteCountKey)
+        defaults.removeObject(forKey: volumeKey)
+        defaults.removeObject(forKey: selectedSoundKey)
+        defaults.removeObject(forKey: droneModeEnabledKey)
+        defaults.removeObject(forKey: concertAFrequencyKey)
+        defaults.removeObject(forKey: pitchOffsetCentsKey)
+        defaults.removeObject(forKey: tuningSelectionDataKey)
+        defaults.removeObject(forKey: temperamentKey)
+        defaults.removeObject(forKey: tuningKeyCenterKey)
+        defaults.removeObject(forKey: keyboardOrientationKey)
+
+        tuningSelection = TuningSelection()
+        visibleSpan = .oneAndHalf
+        zoomVisibleWhiteCount = VisibleKeySpan.oneAndHalf.defaultWhiteKeyCount
+        visibleWhiteStart = keyboardLayout.defaultVisibleStart(visibleWhiteCount: currentVisibleWhiteCount)
+        volume = 0.8
+        selectedSound = .piano
+        concertAFrequency = 440
+        pitchOffsetCents = 0
+        isDroneModeEnabled = true
+        keyboardOrientation = .landscapeRight
+
+        orientationController.updateAppOrientation(.portrait)
+        synthEngine.setVolume(Float(volume))
+        synthEngine.setPreset(selectedSound)
+        synthEngine.setGlobalTuningCents(Float(Self.totalGlobalTuningCents(concertAFrequency: concertAFrequency, pitchOffsetCents: pitchOffsetCents)))
+        synthEngine.setPitchClassOffsets(TuningEngine(selection: tuningSelection).pitchClassOffsetsCents())
     }
 }

@@ -4,6 +4,10 @@ struct KeyboardNavigationStrip: View {
     let layout: PianoKeyboardLayout
     @Binding var visibleWhiteStart: CGFloat
     let visibleWhiteCount: CGFloat
+    let isZoomModeEnabled: Bool
+    let updateZoomVisibleWhiteCount: (CGFloat) -> Void
+
+    @State private var pinchStartVisibleWhiteCount: CGFloat?
 
     var body: some View {
         GeometryReader { geometry in
@@ -51,6 +55,24 @@ struct KeyboardNavigationStrip: View {
                     .onChanged { value in
                         let rawStart = ((value.location.x - (windowWidth / 2)) / max(geometry.size.width, 1)) * totalWhiteCount
                         visibleWhiteStart = layout.clampVisibleStart(rawStart, visibleWhiteCount: visibleWhiteCount)
+                    }
+            )
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        guard isZoomModeEnabled else {
+                            return
+                        }
+
+                        if pinchStartVisibleWhiteCount == nil {
+                            pinchStartVisibleWhiteCount = visibleWhiteCount
+                        }
+
+                        let baseVisibleWhiteCount = pinchStartVisibleWhiteCount ?? visibleWhiteCount
+                        updateZoomVisibleWhiteCount(baseVisibleWhiteCount * value.magnification)
+                    }
+                    .onEnded { _ in
+                        pinchStartVisibleWhiteCount = nil
                     }
             )
         }

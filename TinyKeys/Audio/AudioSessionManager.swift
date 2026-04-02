@@ -37,9 +37,32 @@ final class AudioSessionManager: ObservableObject {
         registerObservers()
     }
 
+    static func configureIdleLaunchSession() {
+        let session = AVAudioSession.sharedInstance()
+
+        do {
+            // Preload the intended playback category early, but do not activate it yet.
+            // This avoids a category swap on first note while still deferring ownership of
+            // the audio session until the user actually plays.
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        } catch {
+            print("Tiny Keys failed to configure idle launch audio session: \(error.localizedDescription)")
+        }
+    }
+
     deinit {
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    func prepareForMixingPlayback() {
+        do {
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setPreferredIOBufferDuration(0.005)
+            refreshDebugState()
+        } catch {
+            refreshDebugState(errorMessage: error.localizedDescription)
         }
     }
 

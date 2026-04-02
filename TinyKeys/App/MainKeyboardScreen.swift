@@ -14,7 +14,9 @@ struct MainKeyboardScreen: View {
                         get: { viewModel.visibleWhiteStart },
                         set: { viewModel.updateVisibleStart($0) }
                     ),
-                    visibleWhiteCount: viewModel.visibleSpan.whiteKeyCount,
+                    visibleWhiteCount: viewModel.currentVisibleWhiteCount,
+                    isZoomModeEnabled: viewModel.isZoomModeEnabled,
+                    updateZoomVisibleWhiteCount: viewModel.updateZoomVisibleWhiteCount(_:),
                     droneModeEnabled: viewModel.isDroneModeEnabled,
                     clearDronesGeneration: viewModel.clearDronesGeneration,
                     keyboardOrientation: viewModel.keyboardOrientation,
@@ -166,6 +168,8 @@ private struct KeyboardSurfaceView: View {
     let layout: PianoKeyboardLayout
     @Binding var visibleWhiteStart: CGFloat
     let visibleWhiteCount: CGFloat
+    let isZoomModeEnabled: Bool
+    let updateZoomVisibleWhiteCount: (CGFloat) -> Void
     let droneModeEnabled: Bool
     let clearDronesGeneration: Int
     let keyboardOrientation: KeyboardOrientationMode
@@ -188,7 +192,9 @@ private struct KeyboardSurfaceView: View {
                 KeyboardNavigationStrip(
                     layout: layout,
                     visibleWhiteStart: $visibleWhiteStart,
-                    visibleWhiteCount: visibleWhiteCount
+                    visibleWhiteCount: visibleWhiteCount,
+                    isZoomModeEnabled: isZoomModeEnabled,
+                    updateZoomVisibleWhiteCount: updateZoomVisibleWhiteCount
                 )
                 .frame(height: navigationHeight)
 
